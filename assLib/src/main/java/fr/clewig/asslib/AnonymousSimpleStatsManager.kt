@@ -128,9 +128,13 @@ class AnonymousSimpleStatsManager {
      */
     private fun handleResponseCode(responseCode: Int) {
         when (responseCode) {
-            200 -> print("OK")
-            206 -> print("Partial OK")
-            else -> print("error $responseCode")
+            200 -> Log.v(this.javaClass.name, "OK")
+            206 -> Log.v(
+                this.javaClass.name,
+                "Partial OK, bad pageId in the request has not been treated"
+            )
+            400 -> Log.v(this.javaClass.name, "Failed, the pageIds in the request were not treated")
+            else -> Log.v(this.javaClass.name, "error $responseCode")
         }
     }
 
