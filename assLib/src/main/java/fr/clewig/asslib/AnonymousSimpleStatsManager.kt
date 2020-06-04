@@ -102,8 +102,12 @@ class AnonymousSimpleStatsManager {
             wr.write(jsonObj.toString())
             wr.flush()
             wr.close()
+
             val `in`: InputStream =
                 BufferedInputStream(urlConnection.inputStream)
+
+            handleResponseCode(urlConnection.responseCode)
+
             result = convertStreamToString(`in`)
         } catch (e: IOException) {
             Log.e(e.javaClass.name, e.message, e)
@@ -115,6 +119,19 @@ class AnonymousSimpleStatsManager {
             urlConnection?.disconnect()
         }
         return result
+    }
+
+    /**
+     * Handle the request response code
+     *
+     * @param responseCode the response code
+     */
+    private fun handleResponseCode(responseCode: Int) {
+        when (responseCode) {
+            200 -> print("OK")
+            206 -> print("Partial OK")
+            else -> print("error $responseCode")
+        }
     }
 
     /**
