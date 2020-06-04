@@ -1,0 +1,3 @@
+include ':assLib'
+include ':app'
+rootProject.name = "Ass"
