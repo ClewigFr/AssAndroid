@@ -58,6 +58,11 @@ class AnonymousSimpleStatsManager {
         GlobalScope.launch {
             withContext(Dispatchers.IO) {
                 postCall(url, JSONObject().put("pageViews", pageViews.toJson()))
+                if (verbose) Log.v(
+                    this.javaClass.name,
+                    JSONObject().put("pageViews", pageViews.toJson()).toString()
+                )
+
             }
         }
 

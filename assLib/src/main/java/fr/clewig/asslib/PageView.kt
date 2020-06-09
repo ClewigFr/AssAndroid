@@ -24,12 +24,14 @@ data class PageViews(var pageViews: List<PageView>)
 fun PageView.toJson() = JSONObject().apply {
     put("page", page)
     put("sessionId", sessionId)
-    put("timestamp", timestamp)
+    put("timestamp", System.currentTimeMillis() - timestamp)
 }
 
 /**
  *
  */
 fun PageViews.toJson() = JSONArray().apply {
-    pageViews.forEach { put(it.toJson()) }
+    pageViews.forEach {
+        put(it.toJson())
+    }
 }
