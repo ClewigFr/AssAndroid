@@ -21,6 +21,7 @@ import javax.net.ssl.HttpsURLConnection
 class AnonymousSimpleStatsManager {
 
     private val sessionId: UUID = UUID.randomUUID()
+    private val batchPageViews: List<PageView> = mutableListOf()
     private val url: URL = URL("https://gentle-inlet-02091.herokuapp.com/views")
     private var verbose = false
 
@@ -53,10 +54,13 @@ class AnonymousSimpleStatsManager {
     fun logScreen(pageId: String) {
         val page = UUID.fromString(pageId)
         val pageView = PageView(page, sessionId)
-        val pageViews = PageViews(listOf(pageView))
+        batchPageViews.plus(pageView)
+        if (batchPageViews.size > 20) {
 
+        }
         GlobalScope.launch {
             withContext(Dispatchers.IO) {
+                val pageViews = PageViews(batchPageViews)
                 postCall(url, JSONObject().put("pageViews", pageViews.toJson()))
                 if (verbose) Log.v(
                     this.javaClass.name,
