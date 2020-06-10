@@ -58,7 +58,9 @@ class AnonymousSimpleStatsManager {
                 @OnLifecycleEvent(Lifecycle.Event.ON_STOP)
                 fun onBackground() {
                     if (verbose) Log.v(this.javaClass.name, "onBackground upload")
-                    createAndSendJson(batchPageViews.toMutableList())
+                    if (batchPageViews.isNotEmpty()) {
+                        createAndSendJson(batchPageViews.toMutableList())
+                    }
                 }
             })
         if (verbose) Log.v(this.javaClass.name, "setup")
@@ -91,7 +93,6 @@ class AnonymousSimpleStatsManager {
                 batchPageViews.clear()
 
                 if (verbose) Log.v(this.javaClass.name, jsonArray.toString())
-
             }
         }
     }
