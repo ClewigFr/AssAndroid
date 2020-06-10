@@ -1,8 +1,12 @@
 package fr.clewig.asslib
 
-import android.content.Context
+import android.os.Build
 import android.util.Log
-import androidx.work.*
+import androidx.annotation.RequiresApi
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleObserver
+import androidx.lifecycle.OnLifecycleEvent
+import androidx.lifecycle.ProcessLifecycleOwner
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
@@ -15,23 +19,24 @@ import java.nio.charset.Charset
 import java.security.KeyManagementException
 import java.security.NoSuchAlgorithmException
 import java.util.*
-import java.util.concurrent.TimeUnit
 import javax.net.ssl.HttpsURLConnection
 
 /**
  * AnonymousSimpleStatsManager
  */
-class AnonymousSimpleStatsManager(val context: Context) {
+class AnonymousSimpleStatsManager {
 
     private val sessionId: UUID = UUID.randomUUID()
     private val batchPageViews: MutableList<PageView> = mutableListOf()
-    val url: URL = URL("https://gentle-inlet-02091.herokuapp.com/views")
+    private val url: URL = URL("https://gentle-inlet-02091.herokuapp.com/views")
     private var verbose = false
 
     companion object AnonymousSimpleStats {
         private const val TIMEOUT_CONNECTION = 15000
         private const val TIMEOUT_SOCKET = 15000
         private val CHARSET_UTF8 = Charset.forName("UTF-8")
+        private const val BATCH_THRESHOLD = 20
+        private const val DELAY_BEFORE_BATCH_UPLOAD = 120000
     }
 
     /**
@@ -41,6 +46,21 @@ class AnonymousSimpleStatsManager(val context: Context) {
      */
     fun setup(verbose: Boolean) {
         this.verbose = verbose
+        ProcessLifecycleOwner.get()
+            .lifecycle
+            .addObserver(object : LifecycleObserver {
+                @OnLifecycleEvent(Lifecycle.Event.ON_START)
+                fun onForeground() {
+                    // App goes to foreground
+                }
+
+                @RequiresApi(Build.VERSION_CODES.N)
+                @OnLifecycleEvent(Lifecycle.Event.ON_STOP)
+                fun onBackground() {
+                    if (verbose) Log.v(this.javaClass.name, "onBackground upload")
+                    createAndSendJson(batchPageViews.toMutableList())
+                }
+            })
         if (verbose) Log.v(this.javaClass.name, "setup")
     }
 
@@ -53,35 +73,13 @@ class AnonymousSimpleStatsManager(val context: Context) {
         val page = UUID.fromString(pageId)
         val pageView = PageView(page, sessionId)
         batchPageViews.add(pageView)
-        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.N) {
+        val isPageViewOldEnough =
+            batchPageViews.first().timestamp + DELAY_BEFORE_BATCH_UPLOAD < System.currentTimeMillis()
+        if (batchPageViews.size > BATCH_THRESHOLD || isPageViewOldEnough) {
             createAndSendJson(batchPageViews.toMutableList())
-        } else {
-            val constraints =
-                Constraints.Builder().setTriggerContentMaxDelay(1, TimeUnit.MINUTES).build()
-            val uploadWorkRequest: WorkRequest =
-                OneTimeWorkRequestBuilder<SendLogWorker>()
-                    .setInputData(createInputData(batchPageViews))
-                    .setConstraints(constraints)
-                    .build()
-            WorkManager
-                .getInstance(context)
-                .enqueue(uploadWorkRequest)
         }
-        batchPageViews.clear()
 
         if (verbose) Log.v(this.javaClass.name, "log screen $page")
-    }
-
-    private fun createInputData(batchList: MutableList<PageView>): Data {
-        val builder = Data.Builder()
-        val pageViews = PageViews(batchList)
-        val jsonArray = pageViews.toJson()
-        builder.putString(
-            SendLogWorker.KEY_JSON,
-            JSONObject().put("pageViews", jsonArray).toString()
-        )
-
-        return builder.build()
     }
 
     private fun createAndSendJson(batchList: MutableList<PageView>) {
@@ -90,6 +88,7 @@ class AnonymousSimpleStatsManager(val context: Context) {
                 val pageViews = PageViews(batchList)
                 val jsonArray = pageViews.toJson()
                 postCall(url, JSONObject().put("pageViews", jsonArray))
+                batchPageViews.clear()
 
                 if (verbose) Log.v(this.javaClass.name, jsonArray.toString())
 
@@ -104,7 +103,7 @@ class AnonymousSimpleStatsManager(val context: Context) {
      * @param jsonObj the jsonObject to send
      * @param token the application token
      */
-    fun postCall(url: URL, jsonObj: JSONObject, token: String? = null): String? {
+    private fun postCall(url: URL, jsonObj: JSONObject, token: String? = null): String? {
         var result: String?
 
         var urlConnection: HttpURLConnection? = null
