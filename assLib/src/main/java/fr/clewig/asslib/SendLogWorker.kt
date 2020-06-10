@@ -2,99 +2,38 @@ package fr.clewig.asslib
 
 import android.content.Context
 import android.util.Log
-import androidx.work.*
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import org.json.JSONObject
+import androidx.work.Worker
+import androidx.work.WorkerParameters
 import java.io.*
 import java.net.HttpURLConnection
 import java.net.URL
 import java.nio.charset.Charset
 import java.security.KeyManagementException
 import java.security.NoSuchAlgorithmException
-import java.util.*
-import java.util.concurrent.TimeUnit
 import javax.net.ssl.HttpsURLConnection
 
-/**
- * AnonymousSimpleStatsManager
- */
-class AnonymousSimpleStatsManager(val context: Context) {
+class SendLogWorker(
+    appContext: Context,
+    workerParams: WorkerParameters
+) :
+    Worker(appContext, workerParams) {
+    override fun doWork(): Result {
+        val json = inputData.getString(KEY_JSON)
+        // Do the work here--in this case, upload the images.
+        if (json != null) {
+            postCall(url, json)
+        }
 
-    private val sessionId: UUID = UUID.randomUUID()
-    private val batchPageViews: MutableList<PageView> = mutableListOf()
-    val url: URL = URL("https://gentle-inlet-02091.herokuapp.com/views")
-    private var verbose = false
+        // Indicate whether the work finished successfully with the Result
+        return Result.success()
+    }
 
-    companion object AnonymousSimpleStats {
+    companion object SendLogWorker {
         private const val TIMEOUT_CONNECTION = 15000
         private const val TIMEOUT_SOCKET = 15000
+        const val KEY_JSON = "JSON_TO_SEND"
         private val CHARSET_UTF8 = Charset.forName("UTF-8")
-    }
-
-    /**
-     * Setup the manager
-     *
-     * @param verbose is log activated
-     */
-    fun setup(verbose: Boolean) {
-        this.verbose = verbose
-        if (verbose) Log.v(this.javaClass.name, "setup")
-    }
-
-    /**
-     * Send a page view hit
-     *
-     *  @param pageId the page identifier
-     */
-    fun logScreen(pageId: String) {
-        val page = UUID.fromString(pageId)
-        val pageView = PageView(page, sessionId)
-        batchPageViews.add(pageView)
-        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.N) {
-            createAndSendJson(batchPageViews.toMutableList())
-        } else {
-            val constraints =
-                Constraints.Builder().setTriggerContentMaxDelay(1, TimeUnit.MINUTES).build()
-            val uploadWorkRequest: WorkRequest =
-                OneTimeWorkRequestBuilder<SendLogWorker>()
-                    .setInputData(createInputData(batchPageViews))
-                    .setConstraints(constraints)
-                    .build()
-            WorkManager
-                .getInstance(context)
-                .enqueue(uploadWorkRequest)
-        }
-        batchPageViews.clear()
-
-        if (verbose) Log.v(this.javaClass.name, "log screen $page")
-    }
-
-    private fun createInputData(batchList: MutableList<PageView>): Data {
-        val builder = Data.Builder()
-        val pageViews = PageViews(batchList)
-        val jsonArray = pageViews.toJson()
-        builder.putString(
-            SendLogWorker.KEY_JSON,
-            JSONObject().put("pageViews", jsonArray).toString()
-        )
-
-        return builder.build()
-    }
-
-    private fun createAndSendJson(batchList: MutableList<PageView>) {
-        GlobalScope.launch {
-            withContext(Dispatchers.IO) {
-                val pageViews = PageViews(batchList)
-                val jsonArray = pageViews.toJson()
-                postCall(url, JSONObject().put("pageViews", jsonArray))
-
-                if (verbose) Log.v(this.javaClass.name, jsonArray.toString())
-
-            }
-        }
+        val url: URL = URL("https://gentle-inlet-02091.herokuapp.com/views")
     }
 
     /**
@@ -104,7 +43,7 @@ class AnonymousSimpleStatsManager(val context: Context) {
      * @param jsonObj the jsonObject to send
      * @param token the application token
      */
-    fun postCall(url: URL, jsonObj: JSONObject, token: String? = null): String? {
+    fun postCall(url: URL, jsonObj: String, token: String? = null): String? {
         var result: String?
 
         var urlConnection: HttpURLConnection? = null
@@ -132,7 +71,7 @@ class AnonymousSimpleStatsManager(val context: Context) {
                 urlConnection.outputStream,
                 CHARSET_UTF8
             )
-            wr.write(jsonObj.toString())
+            wr.write(jsonObj)
             wr.flush()
             wr.close()
 
@@ -191,3 +130,4 @@ class AnonymousSimpleStatsManager(val context: Context) {
         return sb.toString()
     }
 }
+
