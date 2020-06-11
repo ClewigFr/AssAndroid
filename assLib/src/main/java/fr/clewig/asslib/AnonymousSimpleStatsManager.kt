@@ -1,5 +1,6 @@
 package fr.clewig.asslib
 
+import android.content.Context
 import android.os.Build
 import android.util.Log
 import androidx.annotation.RequiresApi
@@ -14,6 +15,7 @@ import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.io.*
 import java.net.HttpURLConnection
+import java.net.SocketTimeoutException
 import java.net.URL
 import java.nio.charset.Charset
 import java.security.KeyManagementException
@@ -24,7 +26,7 @@ import javax.net.ssl.HttpsURLConnection
 /**
  * AnonymousSimpleStatsManager
  */
-class AnonymousSimpleStatsManager {
+class AnonymousSimpleStatsManager(val context: Context) {
 
     private val sessionId: UUID = UUID.randomUUID()
     private val batchPageViews: MutableList<PageView> = mutableListOf()
@@ -37,6 +39,7 @@ class AnonymousSimpleStatsManager {
         private val CHARSET_UTF8 = Charset.forName("UTF-8")
         private const val BATCH_THRESHOLD = 20
         private const val DELAY_BEFORE_BATCH_UPLOAD = 120000
+        private const val BATCH_SAVE_NAME = "saved_file.json"
     }
 
     /**
@@ -46,12 +49,12 @@ class AnonymousSimpleStatsManager {
      */
     fun setup(verbose: Boolean) {
         this.verbose = verbose
+        restoreBatchForRetry()
         ProcessLifecycleOwner.get()
             .lifecycle
             .addObserver(object : LifecycleObserver {
                 @OnLifecycleEvent(Lifecycle.Event.ON_START)
                 fun onForeground() {
-                    // App goes to foreground
                 }
 
                 @RequiresApi(Build.VERSION_CODES.N)
@@ -90,7 +93,6 @@ class AnonymousSimpleStatsManager {
                 val pageViews = PageViews(batchList)
                 val jsonArray = pageViews.toJson()
                 postCall(url, JSONObject().put("pageViews", jsonArray))
-                batchPageViews.clear()
 
                 if (verbose) Log.v(this.javaClass.name, jsonArray.toString())
             }
@@ -139,14 +141,20 @@ class AnonymousSimpleStatsManager {
             val `in`: InputStream =
                 BufferedInputStream(urlConnection.inputStream)
 
-            handleResponseCode(urlConnection.responseCode)
+            handleResponseCode(urlConnection.responseCode, jsonObj)
 
             result = convertStreamToString(`in`)
+        } catch (e: SocketTimeoutException) {
+            Log.e(e.javaClass.name, e.message, e)
+            saveBatchForRetry()
+            result = null
         } catch (e: IOException) {
             Log.e(e.javaClass.name, e.message, e)
+            saveBatchForRetry()
             result = null
         } catch (e: ArrayIndexOutOfBoundsException) {
             Log.e(e.javaClass.name, e.message, e)
+            saveBatchForRetry()
             result = null
         } finally {
             urlConnection?.disconnect()
@@ -159,17 +167,66 @@ class AnonymousSimpleStatsManager {
      *
      * @param responseCode the response code
      */
-    private fun handleResponseCode(responseCode: Int) {
+    private fun handleResponseCode(responseCode: Int, jsonObj: JSONObject) {
         when (responseCode) {
-            200 -> Log.v(this.javaClass.name, "OK")
-            206 -> Log.v(
-                this.javaClass.name,
-                "Partial OK, bad pageId in the request has not been treated"
-            )
-            400 -> Log.v(this.javaClass.name, "Failed, the pageIds in the request were not treated")
-            else -> Log.v(this.javaClass.name, "error $responseCode")
+            200 -> {
+                batchPageViews.clear()
+                Log.v(this.javaClass.name, "OK")
+            }
+            206 -> {
+                batchPageViews.clear()
+                Log.v(
+                    this.javaClass.name,
+                    "Partial OK, bad pageId in the request has not been treated"
+                )
+            }
+            400 -> {
+                batchPageViews.clear()
+                Log.v(this.javaClass.name, "Failed, the pageIds in the request were not treated")
+            }
+            else -> {
+                saveBatchForRetry()
+                Log.v(this.javaClass.name, "error $responseCode")
+            }
         }
     }
+
+    private fun saveBatchForRetry() {
+        val pageViews = PageViews(batchPageViews)
+        val jsonArray = pageViews.toJsonLocal()
+        val file = File.createTempFile(BATCH_SAVE_NAME, null, context.cacheDir)
+        file.outputStream().use {
+            it.write(JSONObject().put("pageViews", jsonArray).toString().toByteArray())
+
+        }
+        batchPageViews.clear()
+    }
+
+    private fun restoreBatchForRetry() {
+        val cacheFile = File(context.cacheDir, BATCH_SAVE_NAME)
+
+        if (cacheFile.exists()) {
+            var savedString = ""
+            cacheFile.inputStream().bufferedReader().useLines { lines ->
+                savedString = lines.fold("") { some, text ->
+                    "$some\n$text"
+                }
+            }
+            JSONObject(savedString).run {
+                val array = getJSONArray("pageViews")
+                for (i in 0 until array.length()) {
+                    val item = array.getJSONObject(i)
+                    val pageView = item.toPageView()
+                    batchPageViews.add(pageView)
+                }
+            }
+
+            cacheFile.delete()
+        }
+
+        if (verbose) Log.v(this.javaClass.name, "reload saved page view")
+    }
+
 
     /**
      * Convert a stream to string

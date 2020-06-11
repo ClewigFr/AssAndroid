@@ -30,8 +30,35 @@ fun PageView.toJson() = JSONObject().apply {
 /**
  *
  */
+fun PageView.toJsonLocal() = JSONObject().apply {
+    put("page", page)
+    put("sessionId", sessionId)
+    put("timestamp", System.currentTimeMillis() - timestamp)
+}
+
+/**
+ *
+ */
+fun JSONObject.toPageView() = PageView(
+    UUID.fromString(getString("page")),
+    UUID.fromString(getString("sessionId")),
+    getLong("timestamp")
+)
+
+/**
+ *
+ */
 fun PageViews.toJson() = JSONArray().apply {
     pageViews.forEach {
         put(it.toJson())
+    }
+}
+
+/**
+ *
+ */
+fun PageViews.toJsonLocal() = JSONArray().apply {
+    pageViews.forEach {
+        put(it.toJsonLocal())
     }
 }
