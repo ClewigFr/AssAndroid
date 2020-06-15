@@ -1,6 +1,5 @@
 package fr.clewig.asslib
 
-import android.app.Application
 import android.content.Context
 import android.os.Build
 import android.util.Log
@@ -27,35 +26,23 @@ import javax.net.ssl.HttpsURLConnection
 /**
  * AnonymousSimpleStatsManager
  */
-class AnonymousSimpleStatsManager {
+class AnonymousSimpleStatsManager(private val context: Context, val verbose: Boolean) {
 
     private val sessionId: UUID = UUID.randomUUID()
     private val batchPageViews: MutableList<PageView> = mutableListOf()
     private val url: URL = URL("https://gentle-inlet-02091.herokuapp.com/views")
-    private var verbose = false
-    private var context: Context? = null
 
-    companion object AnonymousSimpleStats {
+    companion object AnonymousSimpleStats :
+        AssHolder<AnonymousSimpleStatsManager, Context, Boolean>(::AnonymousSimpleStatsManager) {
         private const val TIMEOUT_CONNECTION = 15000
         private const val TIMEOUT_SOCKET = 15000
         private val CHARSET_UTF8 = Charset.forName("UTF-8")
         private const val BATCH_THRESHOLD = 20
         private const val DELAY_BEFORE_BATCH_UPLOAD = 120000
         private const val BATCH_SAVE_NAME = "saved_file.json"
-        private var instance: AnonymousSimpleStatsManager = AnonymousSimpleStatsManager()
-
-        fun getInstance() = instance
     }
 
-    /**
-     * Setup the manager
-     *
-     * @param verbose is log activated
-     * @param application the application
-     */
-    fun setup(verbose: Boolean, application: Application) {
-        this.verbose = verbose
-        this.context = application.applicationContext
+    init {
         restoreBatchForRetry()
         ProcessLifecycleOwner.get()
             .lifecycle
@@ -201,7 +188,7 @@ class AnonymousSimpleStatsManager {
     private fun saveBatchForRetry() {
         val pageViews = PageViews(batchPageViews)
         val jsonArray = pageViews.toJsonLocal()
-        val file = File.createTempFile(BATCH_SAVE_NAME, null, context?.cacheDir)
+        val file = File.createTempFile(BATCH_SAVE_NAME, null, context.cacheDir)
         file.outputStream().use {
             it.write(JSONObject().put("pageViews", jsonArray).toString().toByteArray())
 
@@ -210,7 +197,7 @@ class AnonymousSimpleStatsManager {
     }
 
     private fun restoreBatchForRetry() {
-        val cacheFile = File(context?.cacheDir, BATCH_SAVE_NAME)
+        val cacheFile = File(context.cacheDir, BATCH_SAVE_NAME)
 
         if (cacheFile.exists()) {
             var savedString = ""
