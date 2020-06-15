@@ -1,5 +1,6 @@
 package fr.clewig.asslib
 
+import android.app.Application
 import android.content.Context
 import android.os.Build
 import android.util.Log
@@ -26,12 +27,13 @@ import javax.net.ssl.HttpsURLConnection
 /**
  * AnonymousSimpleStatsManager
  */
-class AnonymousSimpleStatsManager(val context: Context) {
+class AnonymousSimpleStatsManager {
 
     private val sessionId: UUID = UUID.randomUUID()
     private val batchPageViews: MutableList<PageView> = mutableListOf()
     private val url: URL = URL("https://gentle-inlet-02091.herokuapp.com/views")
     private var verbose = false
+    private var context: Context? = null
 
     companion object AnonymousSimpleStats {
         private const val TIMEOUT_CONNECTION = 15000
@@ -40,15 +42,20 @@ class AnonymousSimpleStatsManager(val context: Context) {
         private const val BATCH_THRESHOLD = 20
         private const val DELAY_BEFORE_BATCH_UPLOAD = 120000
         private const val BATCH_SAVE_NAME = "saved_file.json"
+        private var instance: AnonymousSimpleStatsManager = AnonymousSimpleStatsManager()
+
+        fun getInstance() = instance
     }
 
     /**
      * Setup the manager
      *
      * @param verbose is log activated
+     * @param application the application
      */
-    fun setup(verbose: Boolean) {
+    fun setup(verbose: Boolean, application: Application) {
         this.verbose = verbose
+        this.context = application.applicationContext
         restoreBatchForRetry()
         ProcessLifecycleOwner.get()
             .lifecycle
@@ -141,7 +148,7 @@ class AnonymousSimpleStatsManager(val context: Context) {
             val `in`: InputStream =
                 BufferedInputStream(urlConnection.inputStream)
 
-            handleResponseCode(urlConnection.responseCode, jsonObj)
+            handleResponseCode(urlConnection.responseCode)
 
             result = convertStreamToString(`in`)
         } catch (e: SocketTimeoutException) {
@@ -167,7 +174,7 @@ class AnonymousSimpleStatsManager(val context: Context) {
      *
      * @param responseCode the response code
      */
-    private fun handleResponseCode(responseCode: Int, jsonObj: JSONObject) {
+    private fun handleResponseCode(responseCode: Int) {
         when (responseCode) {
             200 -> {
                 batchPageViews.clear()
@@ -194,7 +201,7 @@ class AnonymousSimpleStatsManager(val context: Context) {
     private fun saveBatchForRetry() {
         val pageViews = PageViews(batchPageViews)
         val jsonArray = pageViews.toJsonLocal()
-        val file = File.createTempFile(BATCH_SAVE_NAME, null, context.cacheDir)
+        val file = File.createTempFile(BATCH_SAVE_NAME, null, context?.cacheDir)
         file.outputStream().use {
             it.write(JSONObject().put("pageViews", jsonArray).toString().toByteArray())
 
@@ -203,7 +210,7 @@ class AnonymousSimpleStatsManager(val context: Context) {
     }
 
     private fun restoreBatchForRetry() {
-        val cacheFile = File(context.cacheDir, BATCH_SAVE_NAME)
+        val cacheFile = File(context?.cacheDir, BATCH_SAVE_NAME)
 
         if (cacheFile.exists()) {
             var savedString = ""
