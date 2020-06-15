@@ -9,8 +9,8 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
-        ass = AnonymousSimpleStatsManager(applicationContext)
-        ass?.setup(true)
+        ass = AnonymousSimpleStatsManager.getInstance()
+        ass?.setup(true, application)
     }
 
     override fun onResume() {
