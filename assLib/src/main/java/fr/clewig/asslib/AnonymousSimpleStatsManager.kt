@@ -34,8 +34,8 @@ class AnonymousSimpleStatsManager(private val context: Context, val verbose: Boo
 
     companion object AnonymousSimpleStats :
         AssHolder<AnonymousSimpleStatsManager, Context, Boolean>(::AnonymousSimpleStatsManager) {
-        private const val TIMEOUT_CONNECTION = 15000
-        private const val TIMEOUT_SOCKET = 15000
+        private const val TIMEOUT_CONNECTION = 45000
+        private const val TIMEOUT_SOCKET = 45000
         private val CHARSET_UTF8 = Charset.forName("UTF-8")
         private const val BATCH_THRESHOLD = 20
         private const val DELAY_BEFORE_BATCH_UPLOAD = 120000
