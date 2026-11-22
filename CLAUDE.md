@@ -21,4 +21,4 @@ Anonymous Simple Stats (ASS): an anonymous, batched screen-view tracker for Andr
 ## Build and test
 - `./gradlew :assLib:assembleDebug`
 - `./gradlew :assLib:testDebugUnitTest` (only template tests exist so far)
-- Toolchain: Groovy Gradle, minSdk 16, compileSdk 29, Java 8 target.
+- Toolchain: AGP 8.7.3, Gradle 8.9, Kotlin 2.0.21; needs JDK 17. minSdk 16, compileSdk 35, targetSdk 29, Java 8 bytecode.

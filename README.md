@@ -57,4 +57,4 @@ The library declares the `INTERNET` and `ACCESS_NETWORK_STATE` permissions in it
 ./gradlew :assLib:assembleRelease
 ```
 
-Requirements: minSdk 16, compileSdk 29, Java 8.
+Requirements: JDK 17 to build (AGP 8.7, Gradle 8.9). minSdk 16, compileSdk 35.
