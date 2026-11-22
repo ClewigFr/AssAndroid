@@ -12,7 +12,12 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
         ass = AnonymousSimpleStatsManager.getInstance(
             application,
-            AssConfig(endpoint = "https://gentle-inlet-02091.herokuapp.com", verbose = true)
+            AssConfig(
+                endpoint = "https://gentle-inlet-02091.herokuapp.com",
+                // The application UUID shown in the dashboard ("Mes applications")
+                appId = "00000000-0000-4000-8000-000000000000",
+                verbose = true
+            )
         )
     }
 

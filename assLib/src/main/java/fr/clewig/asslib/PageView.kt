@@ -62,3 +62,21 @@ fun PageViews.toJsonLocal() = JSONArray().apply {
         put(it.toJsonLocal())
     }
 }
+
+/**
+ * The application UUID from [appId], or null when it's absent or malformed.
+ */
+internal fun parseAppId(appId: String?): UUID? = try {
+    appId?.let { UUID.fromString(it.trim()) }
+} catch (e: IllegalArgumentException) {
+    null
+}
+
+/**
+ * Body of POST /views: {"app": "<uuid>", "pageViews": [...]}; "app" is left out when unknown
+ * (legacy integrations).
+ */
+internal fun viewsPayload(app: UUID?, pageViews: JSONArray) = JSONObject().apply {
+    app?.let { put("app", it.toString()) }
+    put("pageViews", pageViews)
+}

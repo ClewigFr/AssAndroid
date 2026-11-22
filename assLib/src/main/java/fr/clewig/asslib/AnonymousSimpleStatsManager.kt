@@ -25,10 +25,13 @@ import javax.net.ssl.HttpsURLConnection
  * Configuration of the stats manager.
  *
  * @param endpoint base URL of the AssBackend server, e.g. "https://stats.example.com"
+ * @param appId UUID of your application, shown in the dashboard when you create it.
+ *   Page views are only accepted for pages of this application.
  * @param verbose log every event (debug builds only)
  */
 data class AssConfig(
     val endpoint: String,
+    val appId: String?,
     val verbose: Boolean = false
 )
 
@@ -44,6 +47,9 @@ class AnonymousSimpleStatsManager(context: Context, private val config: AssConfi
     private val fileLock = Any()
     private val batchPageViews: MutableList<PageView> = mutableListOf() // guarded by lock
     private val url: URL = URL(config.endpoint.trimEnd('/') + "/views")
+    private val appId: UUID? = parseAppId(config.appId)
+    /** A malformed appId disables the library instead of sending views the server would reject. */
+    private val disabled = config.appId != null && appId == null
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     companion object AnonymousSimpleStats :
@@ -54,10 +60,10 @@ class AnonymousSimpleStatsManager(context: Context, private val config: AssConfi
 
         @Deprecated(
             "Pass the backend URL explicitly",
-            ReplaceWith("getInstance(context, AssConfig(endpoint = \"https://…\", verbose = verbose))")
+            ReplaceWith("getInstance(context, AssConfig(endpoint = \"https://…\", appId = \"…\", verbose = verbose))")
         )
         fun getInstance(context: Context, verbose: Boolean): AnonymousSimpleStatsManager =
-            getInstance(context, AssConfig(LEGACY_ENDPOINT, verbose))
+            getInstance(context, AssConfig(LEGACY_ENDPOINT, appId = null, verbose = verbose))
 
         private const val TIMEOUT_CONNECTION = 45000
         private const val TIMEOUT_SOCKET = 45000
@@ -66,6 +72,10 @@ class AnonymousSimpleStatsManager(context: Context, private val config: AssConfi
         private const val DELAY_BEFORE_BATCH_UPLOAD = 120000
         private const val BATCH_SAVE_NAME = "saved_file.json"
         private const val TAG = "AnonymousSimpleStats"
+    }
+
+    init {
+        if (disabled) Log.e(TAG, "Invalid appId \"${config.appId}\": it must be the application UUID from the dashboard. Stats are disabled.")
     }
 
     init {
@@ -94,6 +104,7 @@ class AnonymousSimpleStatsManager(context: Context, private val config: AssConfi
      *  @param pageId the page identifier
      */
     fun logScreen(pageId: String) {
+        if (disabled) return
         // Never crash the host app over a bad id
         val page = try {
             UUID.fromString(pageId)
@@ -126,7 +137,7 @@ class AnonymousSimpleStatsManager(context: Context, private val config: AssConfi
         if (batchList.isEmpty()) return
         scope.launch {
             val jsonArray = PageViews(batchList).toJson()
-            val delivered = postCall(url, JSONObject().put("pageViews", jsonArray))
+            val delivered = postCall(url, viewsPayload(appId, jsonArray))
             if (!delivered) saveBatchForRetry(batchList)
 
             if (verbose) Log.v(TAG, jsonArray.toString())

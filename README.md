@@ -6,7 +6,8 @@ Simple Stats collects no user identifiers, no device IDs and no personal data. E
 
 | Field       | Meaning                                                      |
 |-------------|--------------------------------------------------------------|
-| `page`      | A UUID you assign to each screen                             |
+| `app`       | Your application's UUID, created in the dashboard            |
+| `page`      | The UUID of a page you added to that application in the dashboard |
 | `sessionId` | A random UUID generated on every app launch, never persisted |
 | `timestamp` | How many milliseconds ago the view happened, at send time    |
 
@@ -21,14 +22,20 @@ Simple Stats collects no user identifiers, no device IDs and no personal data. E
 // Usually in Application.onCreate (or your first Activity)
 val ass = AnonymousSimpleStatsManager.getInstance(
     applicationContext,
-    AssConfig(endpoint = "https://your-ass-backend.example.com", verbose = BuildConfig.DEBUG)
+    AssConfig(
+        endpoint = "https://your-ass-backend.example.com",
+        appId = "c4740a37-572d-488f-9fc4-40cf1575739b", // from the dashboard: "Mes applications"
+        verbose = BuildConfig.DEBUG
+    )
 )
 
-// Whenever a screen is shown
-ass.logScreen("4b344f25-b0cb-49cf-a865-c6626582332a")
+// Whenever a screen is shown, with the UUID of that page in the dashboard
+ass.logScreen("ed1129dd-c159-4bf8-9851-3016b9d6ee3a")
 ```
 
-`logScreen` ignores (and logs) ids that aren't valid UUIDs instead of throwing. The old `getInstance(context, verbose)` still compiles but is deprecated, and it points at the former Heroku server.
+Setup: in the dashboard, create an application (you get its UUID), then add one page per screen you want to track (each gets a UUID).
+
+`logScreen` ignores (and logs) ids that aren't valid UUIDs instead of throwing. A malformed `appId` logs an error and disables the library, rather than sending views the server would reject. The old `getInstance(context, verbose)` still compiles but is deprecated, and it points at the former Heroku server.
 
 The library declares the `INTERNET` and `ACCESS_NETWORK_STATE` permissions in its manifest.
 

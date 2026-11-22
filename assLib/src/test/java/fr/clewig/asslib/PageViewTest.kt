@@ -49,3 +49,34 @@ class AssHolderTest {
         assertEquals("x", second.a)
     }
 }
+
+class AppIdTest {
+
+    @Test
+    fun parsesValidAppId() {
+        val id = UUID.randomUUID()
+        assertEquals(id, parseAppId(id.toString()))
+        assertEquals(id, parseAppId(" $id "))
+    }
+
+    @Test
+    fun malformedOrMissingAppIdIsNull() {
+        assertEquals(null, parseAppId("not-a-uuid"))
+        assertEquals(null, parseAppId(null))
+    }
+
+    @Test
+    fun payloadCarriesTheAppId() {
+        val app = UUID.randomUUID()
+        val views = PageViews(listOf(PageView(UUID.randomUUID(), UUID.randomUUID()))).toJson()
+        val payload = JSONObject(viewsPayload(app, views).toString())
+        assertEquals(app.toString(), payload.getString("app"))
+        assertEquals(1, payload.getJSONArray("pageViews").length())
+    }
+
+    @Test
+    fun payloadWithoutAppIdOmitsTheField() {
+        val payload = viewsPayload(null, PageViews(emptyList()).toJson())
+        assertTrue(!payload.has("app"))
+    }
+}
