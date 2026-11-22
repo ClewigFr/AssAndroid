@@ -72,6 +72,8 @@ class AnonymousSimpleStatsManager(context: Context, private val config: AssConfi
         private const val DELAY_BEFORE_BATCH_UPLOAD = 120000
         private const val BATCH_SAVE_NAME = "saved_file.json"
         private const val TAG = "AnonymousSimpleStats"
+        private const val CONFIG_HINT =
+            "check that appId and the page UUIDs passed to logScreen come from the same application in the dashboard"
     }
 
     init {
@@ -159,9 +161,9 @@ class AnonymousSimpleStatsManager(context: Context, private val config: AssConfi
                 try {
                     urlConnection.sslSocketFactory = TLSSocketFactory()
                 } catch (e: KeyManagementException) {
-                    Log.e(e.javaClass.name, e.message, e)
+                    Log.e(TAG, "Could not enable TLS 1.2+", e)
                 } catch (e: NoSuchAlgorithmException) {
-                    Log.e(e.javaClass.name, e.message, e)
+                    Log.e(TAG, "Could not enable TLS 1.2+", e)
                 }
             }
             urlConnection.connectTimeout = TIMEOUT_CONNECTION
@@ -181,8 +183,8 @@ class AnonymousSimpleStatsManager(context: Context, private val config: AssConfi
             body?.let { if (verbose) Log.v(TAG, convertStreamToString(BufferedInputStream(it)) ?: "") }
             handled
         } catch (e: IOException) {
-            // SocketTimeoutException is an IOException
-            Log.e(e.javaClass.name, e.message, e)
+            // Offline, timeout, DNS…: the batch is saved and retried later
+            Log.w(TAG, "Upload failed (${e.javaClass.simpleName}: ${e.message}), page views kept for retry")
             false
         } finally {
             urlConnection?.disconnect()
@@ -202,18 +204,16 @@ class AnonymousSimpleStatsManager(context: Context, private val config: AssConfi
                 true
             }
             206 -> {
-                Log.v(
-                    this.javaClass.name,
-                    "Partial OK, bad pageId in the request has not been treated"
-                )
+                Log.w(TAG, "Some page views were rejected: $CONFIG_HINT")
                 true
             }
             400 -> {
-                Log.v(TAG, "Failed, the pageIds in the request were not treated")
+                // Retrying wouldn't help: the views are dropped
+                Log.w(TAG, "Page views rejected by the server (400): $CONFIG_HINT")
                 true
             }
             else -> {
-                Log.v(TAG, "error $responseCode")
+                Log.w(TAG, "Server answered $responseCode, page views kept for retry")
                 false
             }
         }
@@ -232,7 +232,7 @@ class AnonymousSimpleStatsManager(context: Context, private val config: AssConfi
                     CHARSET_UTF8
                 )
             } catch (e: Exception) {
-                Log.e(e.javaClass.name, e.message, e)
+                Log.e(TAG, "Could not access the retry file", e)
             }
         }
     }
@@ -250,7 +250,7 @@ class AnonymousSimpleStatsManager(context: Context, private val config: AssConfi
                 val saved = readSavedBatch(cacheFile)
                 synchronized(lock) { batchPageViews.addAll(0, saved) }
             } catch (e: Exception) {
-                Log.e(e.javaClass.name, e.message, e)
+                Log.e(TAG, "Could not access the retry file", e)
             } finally {
                 cacheFile.delete()
             }

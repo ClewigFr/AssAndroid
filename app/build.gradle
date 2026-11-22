@@ -13,6 +13,16 @@ android {
         versionName "1.0"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+
+        // Demo configuration, overridable from the command line, e.g.
+        // ./gradlew :app:installDebug -PassEndpoint=http://10.0.2.2:8099 -PassAppId=<uuid> -PassPages=<uuid>,<uuid>
+        buildConfigField "String", "ASS_ENDPOINT", "\"${project.findProperty('assEndpoint') ?: 'http://10.0.2.2:8099'}\""
+        buildConfigField "String", "ASS_APP_ID", "\"${project.findProperty('assAppId') ?: '00000000-0000-4000-8000-000000000000'}\""
+        buildConfigField "String", "ASS_PAGES", "\"${project.findProperty('assPages') ?: ''}\""
+    }
+
+    buildFeatures {
+        buildConfig true
     }
 
     compileOptions {
