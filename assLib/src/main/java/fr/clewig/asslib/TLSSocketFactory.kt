@@ -73,9 +73,15 @@ class TLSSocketFactory : SSLSocketFactory() {
 
     private fun enableTLSOnSocket(socket: Socket): Socket {
         if (socket is SSLSocket) {
-            socket.enabledProtocols = socket.supportedProtocols
+            // Turn on TLS 1.2/1.3 (off by default on API 16-19) and never the broken SSLv3/TLS 1.0/1.1
+            val secure = socket.supportedProtocols.filter { it in SECURE_PROTOCOLS }
+            if (secure.isNotEmpty()) socket.enabledProtocols = secure.toTypedArray()
         }
         return socket
+    }
+
+    private companion object {
+        val SECURE_PROTOCOLS = setOf("TLSv1.2", "TLSv1.3")
     }
 
     init {

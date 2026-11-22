@@ -1,15 +1,15 @@
 package fr.clewig.asslib
 
 import android.content.Context
-import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
-import androidx.annotation.RequiresApi
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleObserver
-import androidx.lifecycle.OnLifecycleEvent
+import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 import java.io.*
@@ -22,43 +22,70 @@ import java.util.*
 import javax.net.ssl.HttpsURLConnection
 
 /**
+ * Configuration of the stats manager.
+ *
+ * @param endpoint base URL of the AssBackend server, e.g. "https://stats.example.com"
+ * @param verbose log every event (debug builds only)
+ */
+data class AssConfig(
+    val endpoint: String,
+    val verbose: Boolean = false
+)
+
+/**
  * AnonymousSimpleStatsManager
  */
-class AnonymousSimpleStatsManager(private val context: Context, val verbose: Boolean) {
+class AnonymousSimpleStatsManager(context: Context, private val config: AssConfig) {
 
+    private val context: Context = context.applicationContext ?: context
+    private val verbose = config.verbose
     private val sessionId: UUID = UUID.randomUUID()
     private val lock = Any()
     private val fileLock = Any()
     private val batchPageViews: MutableList<PageView> = mutableListOf() // guarded by lock
-    private val url: URL = URL("https://gentle-inlet-02091.herokuapp.com/views")
+    private val url: URL = URL(config.endpoint.trimEnd('/') + "/views")
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     companion object AnonymousSimpleStats :
-        AssHolder<AnonymousSimpleStatsManager, Context, Boolean>(::AnonymousSimpleStatsManager) {
+        AssHolder<AnonymousSimpleStatsManager, Context, AssConfig>(::AnonymousSimpleStatsManager) {
+
+        /** Former default server, kept so existing integrations keep compiling. */
+        private const val LEGACY_ENDPOINT = "https://gentle-inlet-02091.herokuapp.com"
+
+        @Deprecated(
+            "Pass the backend URL explicitly",
+            ReplaceWith("getInstance(context, AssConfig(endpoint = \"https://…\", verbose = verbose))")
+        )
+        fun getInstance(context: Context, verbose: Boolean): AnonymousSimpleStatsManager =
+            getInstance(context, AssConfig(LEGACY_ENDPOINT, verbose))
+
         private const val TIMEOUT_CONNECTION = 45000
         private const val TIMEOUT_SOCKET = 45000
         private val CHARSET_UTF8 = Charset.forName("UTF-8")
         private const val BATCH_THRESHOLD = 20
         private const val DELAY_BEFORE_BATCH_UPLOAD = 120000
         private const val BATCH_SAVE_NAME = "saved_file.json"
+        private const val TAG = "AnonymousSimpleStats"
     }
 
     init {
-        restoreBatchForRetry()
-        ProcessLifecycleOwner.get()
-            .lifecycle
-            .addObserver(object : LifecycleObserver {
-                @OnLifecycleEvent(Lifecycle.Event.ON_START)
-                fun onForeground() {
-                }
-
-                @RequiresApi(Build.VERSION_CODES.N)
-                @OnLifecycleEvent(Lifecycle.Event.ON_STOP)
-                fun onBackground() {
-                    if (verbose) Log.v(this.javaClass.name, "onBackground upload")
+        // Disk read off the main thread
+        scope.launch { restoreBatchForRetry() }
+        // Lifecycle observers must be added on the main thread
+        runOnMain {
+            ProcessLifecycleOwner.get().lifecycle.addObserver(object : DefaultLifecycleObserver {
+                override fun onStop(owner: LifecycleOwner) {
+                    if (verbose) Log.v(TAG, "onBackground upload")
                     createAndSendJson(synchronized(lock) { drainBatch() })
                 }
             })
-        if (verbose) Log.v(this.javaClass.name, "setup")
+        }
+        if (verbose) Log.v(TAG, "setup")
+    }
+
+    private fun runOnMain(block: () -> Unit) {
+        if (Looper.myLooper() == Looper.getMainLooper()) block()
+        else Handler(Looper.getMainLooper()).post(block)
     }
 
     /**
@@ -67,7 +94,13 @@ class AnonymousSimpleStatsManager(private val context: Context, val verbose: Boo
      *  @param pageId the page identifier
      */
     fun logScreen(pageId: String) {
-        val page = UUID.fromString(pageId)
+        // Never crash the host app over a bad id
+        val page = try {
+            UUID.fromString(pageId)
+        } catch (e: IllegalArgumentException) {
+            Log.w(TAG, "Ignored page view: \"$pageId\" is not a UUID")
+            return
+        }
         val toSend: List<PageView>? = synchronized(lock) {
             batchPageViews.add(PageView(page, sessionId))
             val isPageViewOldEnough =
@@ -76,7 +109,7 @@ class AnonymousSimpleStatsManager(private val context: Context, val verbose: Boo
         }
         toSend?.let { createAndSendJson(it) }
 
-        if (verbose) Log.v(this.javaClass.name, "log screen $page")
+        if (verbose) Log.v(TAG, "log screen $page")
     }
 
     /**
@@ -91,12 +124,12 @@ class AnonymousSimpleStatsManager(private val context: Context, val verbose: Boo
 
     private fun createAndSendJson(batchList: List<PageView>) {
         if (batchList.isEmpty()) return
-        GlobalScope.launch(Dispatchers.IO) {
+        scope.launch {
             val jsonArray = PageViews(batchList).toJson()
             val delivered = postCall(url, JSONObject().put("pageViews", jsonArray))
             if (!delivered) saveBatchForRetry(batchList)
 
-            if (verbose) Log.v(this.javaClass.name, jsonArray.toString())
+            if (verbose) Log.v(TAG, jsonArray.toString())
         }
     }
 
@@ -105,10 +138,9 @@ class AnonymousSimpleStatsManager(private val context: Context, val verbose: Boo
      *
      * @param url the url
      * @param jsonObj the jsonObject to send
-     * @param token the application token
      * @return true if the batch was handled by the server and must not be retried
      */
-    private fun postCall(url: URL, jsonObj: JSONObject, token: String? = null): Boolean {
+    private fun postCall(url: URL, jsonObj: JSONObject): Boolean {
         var urlConnection: HttpURLConnection? = null
         return try {
             urlConnection = url.openConnection() as HttpURLConnection
@@ -124,9 +156,6 @@ class AnonymousSimpleStatsManager(private val context: Context, val verbose: Boo
             urlConnection.connectTimeout = TIMEOUT_CONNECTION
             urlConnection.readTimeout = TIMEOUT_SOCKET
             urlConnection.requestMethod = "POST"
-            if (token != null) {
-                urlConnection.setRequestProperty("Authorization", "Bearer $token")
-            }
             urlConnection.doOutput = true
             urlConnection.doInput = true
             urlConnection.setRequestProperty("Content-Type", "application/json; charset=UTF-8")
@@ -138,7 +167,7 @@ class AnonymousSimpleStatsManager(private val context: Context, val verbose: Boo
             val handled = handleResponseCode(urlConnection.responseCode)
             val body = if (urlConnection.responseCode < 400) urlConnection.inputStream
             else urlConnection.errorStream
-            body?.let { if (verbose) Log.v(this.javaClass.name, convertStreamToString(BufferedInputStream(it)) ?: "") }
+            body?.let { if (verbose) Log.v(TAG, convertStreamToString(BufferedInputStream(it)) ?: "") }
             handled
         } catch (e: IOException) {
             // SocketTimeoutException is an IOException
@@ -158,7 +187,7 @@ class AnonymousSimpleStatsManager(private val context: Context, val verbose: Boo
     private fun handleResponseCode(responseCode: Int): Boolean {
         return when (responseCode) {
             200 -> {
-                Log.v(this.javaClass.name, "OK")
+                Log.v(TAG, "OK")
                 true
             }
             206 -> {
@@ -169,11 +198,11 @@ class AnonymousSimpleStatsManager(private val context: Context, val verbose: Boo
                 true
             }
             400 -> {
-                Log.v(this.javaClass.name, "Failed, the pageIds in the request were not treated")
+                Log.v(TAG, "Failed, the pageIds in the request were not treated")
                 true
             }
             else -> {
-                Log.v(this.javaClass.name, "error $responseCode")
+                Log.v(TAG, "error $responseCode")
                 false
             }
         }
@@ -216,7 +245,7 @@ class AnonymousSimpleStatsManager(private val context: Context, val verbose: Boo
             }
         }
 
-        if (verbose) Log.v(this.javaClass.name, "reload saved page view")
+        if (verbose) Log.v(TAG, "reload saved page view")
     }
 
 

@@ -19,11 +19,16 @@ Simple Stats collects no user identifiers, no device IDs and no personal data. E
 
 ```kotlin
 // Usually in Application.onCreate (or your first Activity)
-val ass = AnonymousSimpleStatsManager.getInstance(applicationContext, /* verbose = */ BuildConfig.DEBUG)
+val ass = AnonymousSimpleStatsManager.getInstance(
+    applicationContext,
+    AssConfig(endpoint = "https://your-ass-backend.example.com", verbose = BuildConfig.DEBUG)
+)
 
 // Whenever a screen is shown
 ass.logScreen("4b344f25-b0cb-49cf-a865-c6626582332a")
 ```
+
+`logScreen` ignores (and logs) ids that aren't valid UUIDs instead of throwing. The old `getInstance(context, verbose)` still compiles but is deprecated, and it points at the former Heroku server.
 
 The library declares the `INTERNET` and `ACCESS_NETWORK_STATE` permissions in its manifest.
 
@@ -35,7 +40,7 @@ The library declares the `INTERNET` and `ACCESS_NETWORK_STATE` permissions in it
   - the app goes to the background (through `ProcessLifecycleOwner`).
 - Batches are sent by `POST` to `/views` as `{"pageViews": [...]}`.
 - If sending fails, the batch is written to the cache directory and loaded again on the next launch.
-- `TLSSocketFactory` turns on TLS 1.1 and 1.2 on old devices (API 16–19).
+- `TLSSocketFactory` turns on TLS 1.2/1.3 on old devices (API 16–19) and never turns on SSLv3 or TLS 1.0/1.1.
 
 ### Server responses
 

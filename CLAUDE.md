@@ -4,7 +4,7 @@ Anonymous Simple Stats (ASS): an anonymous, batched screen-view tracker for Andr
 
 ## Layout
 - `assLib/` is the library (package `fr.clewig.asslib`); this is where the real code lives.
-  - `AnonymousSimpleStatsManager.kt`: the public API (`getInstance(context, verbose)` and `logScreen(pageUuid)`), batching, HTTP POST, and saving/restoring a batch in the cache dir.
+  - `AnonymousSimpleStatsManager.kt`: the public API (`getInstance(context, AssConfig(endpoint, verbose))` and `logScreen(pageUuid)`), batching, HTTP POST on a library-owned coroutine scope, and saving/restoring a batch in the cache dir.
   - `AssHolder.kt`: a generic double-checked-locking singleton holder, used as the manager's companion object.
   - `PageView.kt`: the data model and JSON (de)serialization extensions.
   - `TLSSocketFactory.kt`: turns on TLS 1.1/1.2 for API 16–19.
@@ -16,9 +16,9 @@ Anonymous Simple Stats (ASS): an anonymous, batched screen-view tracker for Andr
 - Page IDs must be UUID strings.
 - The wire format is `POST /views` with body `{"pageViews":[{page, sessionId, timestamp}]}`, where `timestamp` is *milliseconds elapsed since the view*, not epoch time. Any change here must match AssBackend.
 - Response codes: 200 and 206 mean accepted, 400 means rejected (drop the batch), anything else means retry.
-- The backend URL is hardcoded in `AnonymousSimpleStatsManager`.
+- The backend URL comes from `AssConfig.endpoint`. The library must never throw into the host app.
 
 ## Build and test
 - `./gradlew :assLib:assembleDebug`
-- `./gradlew :assLib:testDebugUnitTest` (only template tests exist so far)
+- `./gradlew :assLib:testDebugUnitTest` (serialization and singleton tests in `PageViewTest.kt`)
 - Toolchain: AGP 8.7.3, Gradle 8.9, Kotlin 2.0.21; needs JDK 17. minSdk 16, compileSdk 35, targetSdk 29, Java 8 bytecode.
