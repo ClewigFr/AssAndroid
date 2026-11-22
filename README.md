@@ -49,6 +49,7 @@ The library declares the `INTERNET` and `ACCESS_NETWORK_STATE` permissions in it
 | `200` | All views accepted                            | Clears the batch     |
 | `206` | Accepted, but some unknown page IDs were dropped | Clears the batch  |
 | `400` | Nothing accepted                              | Clears the batch     |
+| `429` / `503` | Rate limited / server busy           | Saves the batch to retry later |
 | other | Server error                                  | Saves the batch to retry later |
 
 ## Related repositories
