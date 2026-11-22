@@ -28,12 +28,12 @@ fun PageView.toJson() = JSONObject().apply {
 }
 
 /**
- *
+ * Local (on-disk) format: keeps the absolute epoch timestamp so it survives restarts.
  */
 fun PageView.toJsonLocal() = JSONObject().apply {
     put("page", page)
     put("sessionId", sessionId)
-    put("timestamp", System.currentTimeMillis() - timestamp)
+    put("timestamp", timestamp)
 }
 
 /**
