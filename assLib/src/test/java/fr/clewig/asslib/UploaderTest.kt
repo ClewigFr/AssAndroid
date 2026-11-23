@@ -28,4 +28,20 @@ class UploaderTest {
         assertNull(viewsUrl("not a url"))
         assertNull(viewsUrl("file:///etc/passwd"))
     }
+
+    @Test
+    fun parsesRetryAfterSeconds() {
+        assertEquals(30_000L, parseRetryAfter(" 30 "))
+        assertNull(parseRetryAfter("Wed, 21 Oct 2015 07:28:00 GMT"))
+        assertNull(parseRetryAfter("-1"))
+        assertNull(parseRetryAfter(null))
+    }
+
+    @Test
+    fun readsAcceptEncoding() {
+        assertTrue(acceptsGzip("gzip"))
+        assertTrue(acceptsGzip("br, GZIP;q=0.5"))
+        assertFalse(acceptsGzip("identity"))
+        assertFalse(acceptsGzip(null))
+    }
 }

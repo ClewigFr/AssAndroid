@@ -1,18 +1,11 @@
 package fr.clewig.asslib
 
+import android.app.Application
 import android.content.Context
-import android.os.Handler
-import android.os.Looper
-import androidx.lifecycle.DefaultLifecycleObserver
-import androidx.lifecycle.LifecycleOwner
-import androidx.lifecycle.ProcessLifecycleOwner
-import kotlinx.coroutines.CoroutineExceptionHandler
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.SupervisorJob
 import java.io.File
 import java.util.UUID
+import java.util.concurrent.Executor
+import java.util.concurrent.Executors
 
 /**
  * Configuration of the stats manager.
@@ -60,7 +53,6 @@ class AnonymousSimpleStatsManager(context: Context, private val config: AssConfi
         }
     }
 
-    @OptIn(ExperimentalCoroutinesApi::class)
     private fun createEngine(context: Context): StatsEngine? {
         val appId = parseAppId(config.appId)
         if (config.appId != null && appId == null) {
@@ -72,37 +64,37 @@ class AnonymousSimpleStatsManager(context: Context, private val config: AssConfi
             log.e("Invalid endpoint \"${config.endpoint}\": it must be an http(s) URL. Stats are disabled.")
             return null
         }
-        // One task at a time; nothing thrown in the library's coroutines may reach the host app
-        val scope = CoroutineScope(
-            SupervisorJob() + Dispatchers.IO.limitedParallelism(1) +
-                CoroutineExceptionHandler { _, e -> log.e("Unexpected error, ignored", e) }
-        )
         val clock = { System.currentTimeMillis() }
         return StatsEngine(
             appId = appId,
             uploader = HttpUploader(url, log),
             store = RetryStore(File(context.cacheDir, RETRY_FILE_NAME), clock, log),
-            serialScope = scope,
+            serial = serialExecutor(),
             clock = clock,
             log = log
         ).also { engine ->
             engine.start()
-            onMainThread {
-                // Lifecycle observers must be added on the main thread
-                ProcessLifecycleOwner.get().lifecycle.addObserver(object : DefaultLifecycleObserver {
-                    override fun onStop(owner: LifecycleOwner) {
-                        log.v("onBackground upload")
-                        engine.flush()
-                    }
-                })
-            }
+            val app = context as? Application
+            if (app != null) app.registerActivityLifecycleCallbacks(BackgroundWatcher { log.v("onBackground upload"); engine.flush() })
+            else log.w("No Application context: views are only sent by batches, not when the app goes to background")
             log.v("setup")
         }
     }
 
-    private fun onMainThread(block: () -> Unit) {
-        if (Looper.myLooper() == Looper.getMainLooper()) block()
-        else Handler(Looper.getMainLooper()).post(block)
+    /** One daemon thread, one task at a time; nothing thrown on it may reach the host app. */
+    private fun serialExecutor(): Executor {
+        val thread = Executors.newSingleThreadExecutor { task ->
+            Thread(task, "AnonymousSimpleStats").apply { isDaemon = true }
+        }
+        return Executor { task ->
+            thread.execute {
+                try {
+                    task.run()
+                } catch (e: Throwable) {
+                    log.e("Unexpected error, ignored", e)
+                }
+            }
+        }
     }
 
     /**

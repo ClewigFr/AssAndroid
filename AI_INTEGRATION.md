@@ -109,11 +109,10 @@ The library isn't on Maven Central. Use one of these, in order of preference:
       implementation project(':assLib')
   }
   ```
-- **Option C: as an AAR.** Build it in this repository with `./gradlew :assLib:assembleRelease`, which produces `assLib/build/outputs/aar/assLib-release.aar`. Then copy the AAR into `app/libs/` and add the library's own dependency:
+- **Option C: as an AAR.** Build it in this repository with `./gradlew :assLib:assembleRelease`, which produces `assLib/build/outputs/aar/assLib-release.aar`. Then copy the AAR into `app/libs/`. The library has no dependency besides the Kotlin standard library:
   ```groovy
   dependencies {
       implementation files('libs/assLib-release.aar')
-      implementation 'androidx.lifecycle:lifecycle-process:2.5.1'
   }
   ```
 

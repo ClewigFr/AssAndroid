@@ -47,16 +47,18 @@ Ask: *"Read AI_INTEGRATION.md from the Anonymous Simple Stats library and follow
 
 `logScreen` ignores (and logs) ids that aren't valid UUIDs instead of throwing. A malformed `appId` logs an error and disables the library, rather than sending views the server would reject. The old `getInstance(context, verbose)` still compiles but is deprecated: it sends to `https://ass-api.clewig.fr` without an application UUID, so views are only accepted for pages that already exist there.
 
-The library declares the `INTERNET` and `ACCESS_NETWORK_STATE` permissions in its manifest.
+The library declares only the `INTERNET` permission in its manifest, and has no dependency besides the Kotlin standard library.
 
 ## How it works
 
 - Page views are kept in memory and sent in a batch when:
-  - there are more than 20 views queued, or
+  - 20 views are queued, or
   - the oldest queued view is more than 2 minutes old, or
-  - the app goes to the background (through `ProcessLifecycleOwner`).
-- Batches are sent by `POST` to `/views` as `{"pageViews": [...]}`.
-- If sending fails, the batch is written to the cache directory and loaded again on the next launch.
+  - the app goes to the background (its last activity stops). That batch is written to disk before it is sent.
+- Batches are sent by `POST` to `/views` as `{"app": "<uuid>", "pageViews": [...]}`, one at a time on a single background thread.
+- If sending fails, the batch is written to the cache directory (at most 1000 views, 7 days) and sent again after the next successful upload or on the next launch.
+- After a failure, nothing is sent for a while: the server's `Retry-After`, otherwise 1 minute doubling up to 30 minutes. Batches go straight to the retry file meanwhile.
+- Bodies are gzipped once the server has answered with `Accept-Encoding: gzip`, so an older backend never receives a body it can't read.
 - `TLSSocketFactory` turns on TLS 1.2/1.3 on old devices (API 16–19) and never turns on SSLv3 or TLS 1.0/1.1.
 
 ### Server responses
@@ -66,7 +68,8 @@ The library declares the `INTERNET` and `ACCESS_NETWORK_STATE` permissions in it
 | `200` | All views accepted                            | Clears the batch     |
 | `206` | Accepted, but some unknown page IDs were dropped | Clears the batch  |
 | `400` | Nothing accepted                              | Clears the batch     |
-| `429` / `503` | Rate limited / server busy           | Saves the batch to retry later |
+| `415` | Unsupported `Content-Encoding`               | Saves the batch, retries uncompressed |
+| `429` / `503` | Rate limited / server busy           | Saves the batch, waits for `Retry-After` |
 | other | Server error                                  | Saves the batch to retry later |
 
 ## Related repositories

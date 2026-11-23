@@ -1,7 +1,5 @@
 package fr.clewig.asslib
 
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -20,12 +18,19 @@ class StatsEngineTest {
     private val app = UUID.randomUUID()
     private val store by lazy { RetryStore(folder.root.resolve("retry.json"), clock, log) }
 
-    /** Unconfined runs each task right away: the test sees its effects synchronously. */
+    private var attempts = 0
+    private var retryAfterMs: Long? = null
+
+    /** Runs each task right away: the test sees its effects synchronously. */
     private fun engine() = StatsEngine(
         appId = app,
-        uploader = { payload -> if (serverUp) sent += payload; serverUp },
+        uploader = { payload ->
+            attempts++
+            if (serverUp) sent += payload
+            if (serverUp) UploadResult.Done else UploadResult.Retry(retryAfterMs)
+        },
         store = store,
-        serialScope = CoroutineScope(Dispatchers.Unconfined),
+        serial = { it.run() },
         clock = clock,
         log = log
     )
@@ -61,6 +66,7 @@ class StatsEngineTest {
         assertEquals(StatsEngine.BATCH_THRESHOLD, store.read().size)
 
         serverUp = true
+        clock.now += StatsEngine.MIN_BACKOFF_MS
         repeat(StatsEngine.BATCH_THRESHOLD) { engine.log(UUID.randomUUID()) }
         assertEquals(listOf(StatsEngine.BATCH_THRESHOLD, StatsEngine.BATCH_THRESHOLD), sent.map { it.count() })
         assertTrue(store.read().isEmpty())
@@ -103,5 +109,46 @@ class StatsEngineTest {
         val pages = sent.flatMap { p -> (0 until p.count()).map { p.getJSONArray("pageViews").getJSONObject(it).getString("page") } }
         assertEquals(StatsEngine.BATCH_THRESHOLD * 2 + 3, pages.toSet().size)
         assertEquals(pages.size, pages.toSet().size)
+    }
+
+    @Test
+    fun backsOffAfterAFailureThenDoublesTheWait() {
+        val engine = engine()
+        serverUp = false
+        repeat(StatsEngine.BATCH_THRESHOLD * 3) { engine.log(UUID.randomUUID()) }
+        assertEquals(1, attempts) // the next two batches went straight to the file
+        assertEquals(StatsEngine.BATCH_THRESHOLD * 3, store.read().size)
+
+        clock.now += StatsEngine.MIN_BACKOFF_MS
+        repeat(StatsEngine.BATCH_THRESHOLD) { engine.log(UUID.randomUUID()) }
+        assertEquals(2, attempts)
+        clock.now += StatsEngine.MIN_BACKOFF_MS // the wait is now 2 min
+        repeat(StatsEngine.BATCH_THRESHOLD) { engine.log(UUID.randomUUID()) }
+        assertEquals(2, attempts)
+    }
+
+    @Test
+    fun followsRetryAfter() {
+        val engine = engine()
+        serverUp = false
+        retryAfterMs = 5_000
+        repeat(StatsEngine.BATCH_THRESHOLD) { engine.log(UUID.randomUUID()) }
+        serverUp = true
+        clock.now += 5_000
+        repeat(StatsEngine.BATCH_THRESHOLD) { engine.log(UUID.randomUUID()) }
+        assertEquals(3, attempts) // failed batch, new batch, then the saved one
+        assertEquals(listOf(StatsEngine.BATCH_THRESHOLD, StatsEngine.BATCH_THRESHOLD), sent.map { it.count() })
+        assertTrue(store.read().isEmpty())
+    }
+
+    @Test
+    fun flushDuringBackoffOnlySaves() {
+        val engine = engine()
+        serverUp = false
+        repeat(StatsEngine.BATCH_THRESHOLD) { engine.log(UUID.randomUUID()) }
+        engine.log(UUID.randomUUID())
+        engine.flush()
+        assertEquals(1, attempts)
+        assertEquals(StatsEngine.BATCH_THRESHOLD + 1, store.read().size)
     }
 }

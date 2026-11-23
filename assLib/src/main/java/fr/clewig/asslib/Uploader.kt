@@ -5,12 +5,21 @@ import org.json.JSONObject
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.zip.GZIPOutputStream
 import javax.net.ssl.HttpsURLConnection
+
+/** What became of one POST /views. */
+internal sealed class UploadResult {
+    /** The server handled the batch (accepted or rejected for good): never resend it. */
+    object Done : UploadResult()
+
+    /** Send it again later, not before [retryAfterMs] when the server said so (Retry-After). */
+    data class Retry(val retryAfterMs: Long? = null) : UploadResult()
+}
 
 /** Sends one POST /views body. */
 internal fun interface Uploader {
-    /** @return true if the server handled the batch and it must not be retried */
-    fun upload(payload: JSONObject): Boolean
+    fun upload(payload: JSONObject): UploadResult
 }
 
 internal const val CONFIG_HINT =
@@ -18,7 +27,7 @@ internal const val CONFIG_HINT =
 
 /**
  * 200 and 206 mean accepted, 400 means rejected (retrying wouldn't help), anything else
- * (incl. 429/503) means retry.
+ * (incl. 415/429/503) means retry.
  *
  * @return true if the batch must not be retried
  */
@@ -41,6 +50,14 @@ internal fun isHandled(responseCode: Int, log: AssLog): Boolean = when (response
     }
 }
 
+/** Retry-After in seconds as milliseconds; the HTTP-date form and garbage give null. */
+internal fun parseRetryAfter(header: String?): Long? =
+    header?.trim()?.toLongOrNull()?.takeIf { it >= 0 }?.let { it * 1000 }
+
+/** Whether a response's Accept-Encoding (RFC 7694) says request bodies may be gzipped. */
+internal fun acceptsGzip(header: String?): Boolean =
+    header?.split(',')?.any { it.substringBefore(';').trim().equals("gzip", ignoreCase = true) } == true
+
 /**
  * The http(s) URL of POST /views under [endpoint], or null when it is malformed.
  */
@@ -51,11 +68,20 @@ internal fun viewsUrl(endpoint: String): URL? = try {
     null
 }
 
+/**
+ * POST over [HttpURLConnection]. Bodies are only gzipped once the server has advertised it
+ * with Accept-Encoding, so an older backend never gets a body it can't read.
+ */
 internal class HttpUploader(private val url: URL, private val log: AssLog) : Uploader {
 
-    override fun upload(payload: JSONObject): Boolean {
+    @Volatile
+    private var gzip = false
+
+    override fun upload(payload: JSONObject): UploadResult {
         var connection: HttpURLConnection? = null
         return try {
+            val compress = gzip
+            log.v("POST ${url.path}${if (compress) " (gzip)" else ""}")
             connection = (url.openConnection() as HttpURLConnection).apply {
                 if (this is HttpsURLConnection) legacyTlsFactory?.let { sslSocketFactory = it }
                 connectTimeout = TIMEOUT_MS
@@ -63,24 +89,28 @@ internal class HttpUploader(private val url: URL, private val log: AssLog) : Upl
                 requestMethod = "POST"
                 doOutput = true
                 setRequestProperty("Content-Type", "application/json; charset=UTF-8")
+                if (compress) setRequestProperty("Content-Encoding", "gzip")
             }
-            connection.outputStream.writer(Charsets.UTF_8).use { it.write(payload.toString()) }
+            val out = connection.outputStream.let { if (compress) GZIPOutputStream(it) else it }
+            out.writer(Charsets.UTF_8).use { it.write(payload.toString()) }
 
             // Read the code first: inputStream throws for 4xx/5xx responses
             val code = connection.responseCode
+            gzip = acceptsGzip(connection.getHeaderField("Accept-Encoding"))
             if (log.verbose) {
                 val body = if (code < 400) connection.inputStream else connection.errorStream
                 body?.bufferedReader(Charsets.UTF_8)?.use { log.v(it.readText()) }
             }
-            isHandled(code, log)
+            if (isHandled(code, log)) UploadResult.Done
+            else UploadResult.Retry(parseRetryAfter(connection.getHeaderField("Retry-After")))
         } catch (e: IOException) {
             // Offline, timeout, DNS…: the batch is kept and retried later
             log.w("Upload failed (${e.javaClass.simpleName}: ${e.message}), page views kept for retry")
-            false
+            UploadResult.Retry()
         } catch (e: Exception) {
             // Never throw into the host app (TLS provider bugs, SecurityException…)
             log.e("Upload failed unexpectedly, page views kept for retry", e)
-            false
+            UploadResult.Retry()
         } finally {
             connection?.disconnect()
         }

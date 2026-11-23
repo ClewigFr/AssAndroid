@@ -1,21 +1,24 @@
 package fr.clewig.asslib
 
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.launch
 import java.util.UUID
+import java.util.concurrent.Executor
 
 /**
  * Batching and retry logic, free of Android so it runs in JVM tests.
  *
- * Every upload and every access to [store] runs on [serialScope], which must run one task
- * at a time: uploads never overlap, so a view saved for retry can't be sent twice.
+ * Every upload and every access to [store] runs on [serial], which must run one task at a
+ * time: uploads never overlap, so a view saved for retry can't be sent twice.
  * Only the in-memory batch is shared with the caller's thread, under [lock].
+ *
+ * After a failed upload nothing is sent before a backoff (the server's Retry-After, else
+ * 1 min doubling up to 30 min): batches go straight to the retry file meanwhile, so an
+ * offline device or an overloaded server isn't hit again every 20 views.
  */
 internal class StatsEngine(
     private val appId: UUID?,
     private val uploader: Uploader,
     private val store: RetryStore,
-    private val serialScope: CoroutineScope,
+    private val serial: Executor,
     private val clock: () -> Long,
     private val log: AssLog,
     private val sessionId: UUID = UUID.randomUUID()
@@ -23,10 +26,12 @@ internal class StatsEngine(
     private val lock = Any()
     private val batch = mutableListOf<PageView>() // guarded by lock
 
+    // Only touched on serial
+    private var failures = 0
+    private var nextAttemptAt = 0L
+
     /** Sends what the previous runs left in the retry file. */
-    fun start() {
-        serialScope.launch { retrySaved() }
-    }
+    fun start() = serial.execute { retrySaved() }
 
     fun log(page: UUID) {
         val now = clock()
@@ -46,17 +51,15 @@ internal class StatsEngine(
     fun flush() {
         val toSend = synchronized(lock) { drain() }
         if (toSend.isEmpty()) return
-        serialScope.launch {
+        serial.execute {
             store.add(toSend)
             if (upload(toSend)) store.remove(toSend)
         }
     }
 
-    private fun send(views: List<PageView>) {
-        serialScope.launch {
-            if (upload(views)) retrySaved() // the server is reachable again
-            else store.add(views)
-        }
+    private fun send(views: List<PageView>) = serial.execute {
+        if (upload(views)) retrySaved() // the server is reachable again
+        else store.add(views)
     }
 
     private fun retrySaved() {
@@ -66,10 +69,27 @@ internal class StatsEngine(
         if (upload(saved)) store.remove(saved)
     }
 
+    /** @return true when the views must not be kept; false when backing off or the server asked to retry */
     private fun upload(views: List<PageView>): Boolean {
-        val payload = viewsPayload(appId, views.toJson(clock()))
+        val now = clock()
+        if (now < nextAttemptAt) return false
+        val payload = viewsPayload(appId, views.toJson(now))
         log.v(payload.toString())
-        return uploader.upload(payload)
+        return when (val result = uploader.upload(payload)) {
+            UploadResult.Done -> {
+                failures = 0
+                nextAttemptAt = 0
+                true
+            }
+            is UploadResult.Retry -> {
+                val backoff = result.retryAfterMs?.coerceAtMost(MAX_BACKOFF_MS)
+                    ?: (MIN_BACKOFF_MS shl failures.coerceAtMost(MAX_DOUBLINGS)).coerceAtMost(MAX_BACKOFF_MS)
+                failures++
+                nextAttemptAt = now + backoff
+                log.v("next upload in ${backoff / 1000} s")
+                false
+            }
+        }
     }
 
     /** Must be called while holding [lock]. */
@@ -78,5 +98,8 @@ internal class StatsEngine(
     companion object {
         const val BATCH_THRESHOLD = 20
         const val MAX_BATCH_AGE_MS = 120_000L
+        const val MIN_BACKOFF_MS = 60_000L
+        const val MAX_BACKOFF_MS = 30 * 60_000L
+        private const val MAX_DOUBLINGS = 5
     }
 }

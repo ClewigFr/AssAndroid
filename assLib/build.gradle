@@ -31,8 +31,7 @@ android {
 }
 
 dependencies {
-    implementation 'androidx.lifecycle:lifecycle-process:2.6.2' // last line supporting minSdk 16
-    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0' // only Dispatchers.IO is used
+    // No runtime dependency besides the Kotlin standard library: keep it that way
 
     testImplementation 'junit:junit:4.13.2'
     testImplementation 'org.json:json:20240303' // real org.json for JVM tests
