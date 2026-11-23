@@ -9,6 +9,7 @@ Anonymous Simple Stats (ASS): an anonymous, batched screen-view tracker for Andr
   - `PageView.kt`: the data model and JSON (de)serialization extensions.
   - `TLSSocketFactory.kt`: turns on TLS 1.1/1.2 for API 16–19.
 - `app/` is a sample integration only (`MainActivity`).
+- `AI_INTEGRATION.md`: instructions for AI assistants integrating the library into an app (screen list → CSV → dashboard → generated ids and `logScreen` calls). Keep it in step with the public API and the dashboard's CSV format.
 
 ## Conventions and constraints
 - Anonymity is the product: never add device IDs, advertising IDs, IPs or anything else that persists across sessions. `sessionId` is regenerated on every process start.

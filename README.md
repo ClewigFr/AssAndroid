@@ -35,6 +35,16 @@ ass.logScreen("ed1129dd-c159-4bf8-9851-3016b9d6ee3a")
 
 Setup: in the dashboard, create an application (you get its UUID), then add one page per screen you want to track (each gets a UUID).
 
+### Many screens at once, or with an AI assistant
+
+The dashboard can import page names from a CSV (**Importer un CSV**) and export them with their UUIDs (**Exporter en CSV**: `name,id,app_id`).
+
+[AI_INTEGRATION.md](AI_INTEGRATION.md) is written for AI coding assistants. It has two phases:
+1. the assistant lists the app's screens in a CSV, which you import in the dashboard;
+2. from the exported CSV, the assistant adds the library: the dependency, a Kotlin object with the ids, the initialization, and the `logScreen` calls for Activities, Fragments and Compose.
+
+Ask: *"Read AI_INTEGRATION.md from the Anonymous Simple Stats library and follow phase 1"*, then, with the export, *"follow phase 2"*.
+
 `logScreen` ignores (and logs) ids that aren't valid UUIDs instead of throwing. A malformed `appId` logs an error and disables the library, rather than sending views the server would reject. The old `getInstance(context, verbose)` still compiles but is deprecated, and it points at the former Heroku server.
 
 The library declares the `INTERNET` and `ACCESS_NETWORK_STATE` permissions in its manifest.
