@@ -7,6 +7,7 @@ import android.util.Log
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -46,11 +47,22 @@ class AnonymousSimpleStatsManager(context: Context, private val config: AssConfi
     private val lock = Any()
     private val fileLock = Any()
     private val batchPageViews: MutableList<PageView> = mutableListOf() // guarded by lock
-    private val url: URL = URL(config.endpoint.trimEnd('/') + "/views")
+    /** Null when the endpoint is malformed or not http(s). */
+    private val url: URL? = try {
+        URL(config.endpoint.trim().trimEnd('/') + "/views")
+            .takeIf { it.protocol == "http" || it.protocol == "https" }
+    } catch (e: Exception) {
+        null
+    }
     private val appId: UUID? = parseAppId(config.appId)
-    /** A malformed appId disables the library instead of sending views the server would reject. */
-    private val disabled = config.appId != null && appId == null
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    /** A malformed appId or endpoint disables the library instead of crashing or sending views the server would reject. */
+    private val disabled = (config.appId != null && appId == null) || url == null
+    /** Nothing thrown in the library's coroutines may reach the host app. */
+    private val scope = CoroutineScope(
+        SupervisorJob() + Dispatchers.IO + CoroutineExceptionHandler { _, e ->
+            Log.e(TAG, "Unexpected error, ignored", e)
+        }
+    )
 
     companion object AnonymousSimpleStats :
         AssHolder<AnonymousSimpleStatsManager, Context, AssConfig>(::AnonymousSimpleStatsManager) {
@@ -77,10 +89,15 @@ class AnonymousSimpleStatsManager(context: Context, private val config: AssConfi
     }
 
     init {
-        if (disabled) Log.e(TAG, "Invalid appId \"${config.appId}\": it must be the application UUID from the dashboard. Stats are disabled.")
+        if (config.appId != null && appId == null) Log.e(TAG, "Invalid appId \"${config.appId}\": it must be the application UUID from the dashboard. Stats are disabled.")
+        if (url == null) Log.e(TAG, "Invalid endpoint \"${config.endpoint}\": it must be an http(s) URL. Stats are disabled.")
     }
 
     init {
+        if (!disabled) setup()
+    }
+
+    private fun setup() {
         // Disk read off the main thread
         scope.launch { restoreBatchForRetry() }
         // Lifecycle observers must be added on the main thread
@@ -88,7 +105,8 @@ class AnonymousSimpleStatsManager(context: Context, private val config: AssConfi
             ProcessLifecycleOwner.get().lifecycle.addObserver(object : DefaultLifecycleObserver {
                 override fun onStop(owner: LifecycleOwner) {
                     if (verbose) Log.v(TAG, "onBackground upload")
-                    createAndSendJson(synchronized(lock) { drainBatch() })
+                    // The process may be killed while in background: save first, send, then forget
+                    createAndSendJson(synchronized(lock) { drainBatch() }, persistFirst = true)
                 }
             })
         }
@@ -135,12 +153,16 @@ class AnonymousSimpleStatsManager(context: Context, private val config: AssConfi
         return batch
     }
 
-    private fun createAndSendJson(batchList: List<PageView>) {
+    private fun createAndSendJson(batchList: List<PageView>, persistFirst: Boolean = false) {
+        val url = url ?: return
         if (batchList.isEmpty()) return
         scope.launch {
+            if (persistFirst) saveBatchForRetry(batchList)
             val jsonArray = PageViews(batchList).toJson()
             val delivered = postCall(url, viewsPayload(appId, jsonArray))
-            if (!delivered) saveBatchForRetry(batchList)
+            if (persistFirst) {
+                if (delivered) removeFromRetry(batchList)
+            } else if (!delivered) saveBatchForRetry(batchList)
 
             if (verbose) Log.v(TAG, jsonArray.toString())
         }
@@ -186,6 +208,10 @@ class AnonymousSimpleStatsManager(context: Context, private val config: AssConfi
             // Offline, timeout, DNS…: the batch is saved and retried later
             Log.w(TAG, "Upload failed (${e.javaClass.simpleName}: ${e.message}), page views kept for retry")
             false
+        } catch (e: Exception) {
+            // Never throw into the host app (TLS provider bugs, SecurityException…)
+            Log.e(TAG, "Upload failed unexpectedly, page views kept for retry", e)
+            false
         } finally {
             urlConnection?.disconnect()
         }
@@ -229,6 +255,25 @@ class AnonymousSimpleStatsManager(context: Context, private val config: AssConfi
                 val all = readSavedBatch(file) + failedBatch
                 file.writeText(
                     JSONObject().put("pageViews", PageViews(all).toJsonLocal()).toString(),
+                    CHARSET_UTF8
+                )
+            } catch (e: Exception) {
+                Log.e(TAG, "Could not access the retry file", e)
+            }
+        }
+    }
+
+    /**
+     * Take a delivered batch back out of the retry file (it was saved before sending).
+     */
+    private fun removeFromRetry(delivered: List<PageView>) {
+        synchronized(fileLock) {
+            try {
+                val file = File(context.cacheDir, BATCH_SAVE_NAME)
+                val remaining = readSavedBatch(file) - delivered.toSet()
+                if (remaining.isEmpty()) file.delete()
+                else file.writeText(
+                    JSONObject().put("pageViews", PageViews(remaining).toJsonLocal()).toString(),
                     CHARSET_UTF8
                 )
             } catch (e: Exception) {
