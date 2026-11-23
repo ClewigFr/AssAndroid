@@ -2,67 +2,49 @@ package fr.clewig.asslib
 
 import org.json.JSONArray
 import org.json.JSONObject
-import java.util.*
+import java.util.UUID
 
 /**
+ * One view of a page.
  *
+ * @param timestamp epoch milliseconds of the view
  */
-data class PageView(
-    var page: UUID,
-    var sessionId: UUID,
-    var timestamp: Long = System.currentTimeMillis()
+internal data class PageView(
+    val page: UUID,
+    val sessionId: UUID,
+    val timestamp: Long = System.currentTimeMillis()
 )
 
 /**
- *
+ * Wire format: "timestamp" is the time elapsed since the view at [now], never negative
+ * (a clock moved backwards must not send a negative value).
  */
-data class PageViews(var pageViews: List<PageView>)
-
-/**
- *
- */
-fun PageView.toJson() = JSONObject().apply {
-    put("page", page)
-    put("sessionId", sessionId)
-    // A clock moved backwards must not send a negative elapsed time
-    put("timestamp", (System.currentTimeMillis() - timestamp).coerceAtLeast(0))
+internal fun PageView.toJson(now: Long = System.currentTimeMillis()) = JSONObject().apply {
+    put("page", page.toString())
+    put("sessionId", sessionId.toString())
+    put("timestamp", (now - timestamp).coerceAtLeast(0))
 }
 
 /**
  * Local (on-disk) format: keeps the absolute epoch timestamp so it survives restarts.
  */
-fun PageView.toJsonLocal() = JSONObject().apply {
-    put("page", page)
-    put("sessionId", sessionId)
+internal fun PageView.toJsonLocal() = JSONObject().apply {
+    put("page", page.toString())
+    put("sessionId", sessionId.toString())
     put("timestamp", timestamp)
 }
 
-/**
- *
- */
-fun JSONObject.toPageView() = PageView(
+internal fun JSONObject.toPageView() = PageView(
     UUID.fromString(getString("page")),
     UUID.fromString(getString("sessionId")),
     getLong("timestamp")
 )
 
-/**
- *
- */
-fun PageViews.toJson() = JSONArray().apply {
-    pageViews.forEach {
-        put(it.toJson())
-    }
-}
+internal fun List<PageView>.toJson(now: Long = System.currentTimeMillis()) =
+    JSONArray().apply { forEach { put(it.toJson(now)) } }
 
-/**
- *
- */
-fun PageViews.toJsonLocal() = JSONArray().apply {
-    pageViews.forEach {
-        put(it.toJsonLocal())
-    }
-}
+internal fun List<PageView>.toJsonLocal() =
+    JSONArray().apply { forEach { put(it.toJsonLocal()) } }
 
 /**
  * The application UUID from [appId], or null when it's absent or malformed.
@@ -81,13 +63,3 @@ internal fun viewsPayload(app: UUID?, pageViews: JSONArray) = JSONObject().apply
     app?.let { put("app", it.toString()) }
     put("pageViews", pageViews)
 }
-
-internal const val MAX_RETRY_VIEWS = 1000
-internal const val MAX_RETRY_AGE_MS = 7L * 24 * 60 * 60 * 1000
-
-/**
- * What the retry file keeps: views younger than [MAX_RETRY_AGE_MS], at most the
- * [MAX_RETRY_VIEWS] most recent ones, so a device offline for long can't grow it forever.
- */
-internal fun capRetryBatch(views: List<PageView>, now: Long): List<PageView> =
-    views.filter { now - it.timestamp <= MAX_RETRY_AGE_MS }.takeLast(MAX_RETRY_VIEWS)

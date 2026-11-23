@@ -1,26 +1,18 @@
 package fr.clewig.asslib
 
 import android.content.Context
-import android.os.Build
 import android.os.Handler
 import android.os.Looper
-import android.util.Log
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.launch
-import org.json.JSONObject
-import java.io.*
-import java.net.HttpURLConnection
-import java.net.URL
-import java.nio.charset.Charset
-import java.util.*
-import java.util.concurrent.atomic.AtomicBoolean
-import javax.net.ssl.HttpsURLConnection
+import java.io.File
+import java.util.UUID
 
 /**
  * Configuration of the stats manager.
@@ -37,45 +29,22 @@ data class AssConfig(
 )
 
 /**
- * AnonymousSimpleStatsManager
+ * Entry point of the library: get it with [getInstance], then call [logScreen] on every screen.
+ * Never throws into the host app; a bad configuration only disables it (see the logs).
  */
 class AnonymousSimpleStatsManager(context: Context, private val config: AssConfig) {
 
-    private val context: Context = context.applicationContext ?: context
-    private val verbose = config.verbose
-    private val sessionId: UUID = UUID.randomUUID()
-    private val lock = Any()
-    private val fileLock = Any()
-    private val batchPageViews: MutableList<PageView> = mutableListOf() // guarded by lock
-    /** Null when the endpoint is malformed or not http(s). */
-    private val url: URL? = try {
-        URL(config.endpoint.trim().trimEnd('/') + "/views")
-            .takeIf { it.protocol == "http" || it.protocol == "https" }
-    } catch (e: Exception) {
-        null
-    }
-    private val appId: UUID? = parseAppId(config.appId)
-    /** A malformed appId or endpoint disables the library instead of crashing or sending views the server would reject. */
-    private val disabled = (config.appId != null && appId == null) || url == null
-    /** Nothing thrown in the library's coroutines may reach the host app. */
-    private val retrying = AtomicBoolean(false)
-    /** Views saved to the retry file while their own upload is running: never resent from the file. Guarded by fileLock. */
-    private val inFlight = mutableSetOf<PageView>()
-    private val scope = CoroutineScope(
-        SupervisorJob() + Dispatchers.IO + CoroutineExceptionHandler { _, e ->
-            Log.e(TAG, "Unexpected error, ignored", e)
-        }
-    )
+    private val log: AssLog = AndroidLog(config.verbose)
+
+    /** Null when the configuration is invalid: the library is then disabled. */
+    private val engine: StatsEngine? = createEngine(context.applicationContext ?: context)
 
     companion object AnonymousSimpleStats :
         AssHolder<AnonymousSimpleStatsManager, Context, AssConfig>(::AnonymousSimpleStatsManager) {
 
-        override fun onExistingInstance(instance: AnonymousSimpleStatsManager, arg: Context, arg2: AssConfig) {
-            if (arg2 != instance.config) Log.w(TAG, "getInstance called again with a different AssConfig: it is ignored, the first one is kept")
-        }
-
         /** Default server for the deprecated getInstance(context, verbose), kept so existing integrations keep compiling. */
         private const val LEGACY_ENDPOINT = "https://ass-api.clewig.fr"
+        private const val RETRY_FILE_NAME = "saved_file.json"
 
         @Deprecated(
             "Pass the backend URL explicitly",
@@ -84,272 +53,71 @@ class AnonymousSimpleStatsManager(context: Context, private val config: AssConfi
         fun getInstance(context: Context, verbose: Boolean): AnonymousSimpleStatsManager =
             getInstance(context, AssConfig(LEGACY_ENDPOINT, appId = null, verbose = verbose))
 
-        private const val TIMEOUT_CONNECTION = 45000
-        private const val TIMEOUT_SOCKET = 45000
-        private val CHARSET_UTF8 = Charset.forName("UTF-8")
-        private const val BATCH_THRESHOLD = 20
-        private const val DELAY_BEFORE_BATCH_UPLOAD = 120000
-        private const val BATCH_SAVE_NAME = "saved_file.json"
-        private const val TAG = "AnonymousSimpleStats"
-
-        /** TLS 1.2 is off by default before API 20: one shared factory to turn it on, null elsewhere. */
-        private val legacyTlsFactory: TLSSocketFactory? by lazy {
-            if (Build.VERSION.SDK_INT >= 20) null
-            else try {
-                TLSSocketFactory()
-            } catch (e: Exception) {
-                Log.e(TAG, "Could not enable TLS 1.2+", e)
-                null
+        override fun onExistingInstance(instance: AnonymousSimpleStatsManager, arg: Context, arg2: AssConfig) {
+            if (arg2 != instance.config) {
+                instance.log.w("getInstance called again with a different AssConfig: it is ignored, the first one is kept")
             }
         }
-        private const val CONFIG_HINT =
-            "check that appId and the page UUIDs passed to logScreen come from the same application in the dashboard"
     }
 
-    init {
-        if (config.appId != null && appId == null) Log.e(TAG, "Invalid appId \"${config.appId}\": it must be the application UUID from the dashboard. Stats are disabled.")
-        if (url == null) Log.e(TAG, "Invalid endpoint \"${config.endpoint}\": it must be an http(s) URL. Stats are disabled.")
-    }
-
-    init {
-        if (!disabled) setup()
-    }
-
-    private fun setup() {
-        // Disk read off the main thread
-        scope.launch { restoreBatchForRetry() }
-        // Lifecycle observers must be added on the main thread
-        runOnMain {
-            ProcessLifecycleOwner.get().lifecycle.addObserver(object : DefaultLifecycleObserver {
-                override fun onStop(owner: LifecycleOwner) {
-                    if (verbose) Log.v(TAG, "onBackground upload")
-                    // The process may be killed while in background: save first, send, then forget
-                    createAndSendJson(synchronized(lock) { drainBatch() }, persistFirst = true)
-                }
-            })
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private fun createEngine(context: Context): StatsEngine? {
+        val appId = parseAppId(config.appId)
+        if (config.appId != null && appId == null) {
+            log.e("Invalid appId \"${config.appId}\": it must be the application UUID from the dashboard. Stats are disabled.")
+            return null
         }
-        if (verbose) Log.v(TAG, "setup")
+        val url = viewsUrl(config.endpoint)
+        if (url == null) {
+            log.e("Invalid endpoint \"${config.endpoint}\": it must be an http(s) URL. Stats are disabled.")
+            return null
+        }
+        // One task at a time; nothing thrown in the library's coroutines may reach the host app
+        val scope = CoroutineScope(
+            SupervisorJob() + Dispatchers.IO.limitedParallelism(1) +
+                CoroutineExceptionHandler { _, e -> log.e("Unexpected error, ignored", e) }
+        )
+        val clock = { System.currentTimeMillis() }
+        return StatsEngine(
+            appId = appId,
+            uploader = HttpUploader(url, log),
+            store = RetryStore(File(context.cacheDir, RETRY_FILE_NAME), clock, log),
+            serialScope = scope,
+            clock = clock,
+            log = log
+        ).also { engine ->
+            engine.start()
+            onMainThread {
+                // Lifecycle observers must be added on the main thread
+                ProcessLifecycleOwner.get().lifecycle.addObserver(object : DefaultLifecycleObserver {
+                    override fun onStop(owner: LifecycleOwner) {
+                        log.v("onBackground upload")
+                        engine.flush()
+                    }
+                })
+            }
+            log.v("setup")
+        }
     }
 
-    private fun runOnMain(block: () -> Unit) {
+    private fun onMainThread(block: () -> Unit) {
         if (Looper.myLooper() == Looper.getMainLooper()) block()
         else Handler(Looper.getMainLooper()).post(block)
     }
 
     /**
-     * Send a page view hit
+     * Log a view of a screen.
      *
-     *  @param pageId the page identifier
+     * @param pageId the page UUID from the dashboard; anything else is ignored with a warning
      */
     fun logScreen(pageId: String) {
-        if (disabled) return
-        // Never crash the host app over a bad id
+        val engine = engine ?: return
         val page = try {
             UUID.fromString(pageId)
         } catch (e: IllegalArgumentException) {
-            Log.w(TAG, "Ignored page view: \"$pageId\" is not a UUID")
+            log.w("Ignored page view: \"$pageId\" is not a UUID")
             return
         }
-        val toSend: List<PageView>? = synchronized(lock) {
-            batchPageViews.add(PageView(page, sessionId))
-            val isPageViewOldEnough =
-                batchPageViews.first().timestamp + DELAY_BEFORE_BATCH_UPLOAD < System.currentTimeMillis()
-            if (batchPageViews.size >= BATCH_THRESHOLD || isPageViewOldEnough) drainBatch() else null
-        }
-        toSend?.let { createAndSendJson(it) }
-
-        if (verbose) Log.v(TAG, "log screen $page")
-    }
-
-    /**
-     * Take every queued page view out of the pending list, so each view is sent only once.
-     * Must be called while holding [lock].
-     */
-    private fun drainBatch(): List<PageView> {
-        val batch = batchPageViews.toList()
-        batchPageViews.clear()
-        return batch
-    }
-
-    private fun createAndSendJson(batchList: List<PageView>, persistFirst: Boolean = false) {
-        val url = url ?: return
-        if (batchList.isEmpty()) return
-        scope.launch {
-            if (persistFirst) synchronized(fileLock) {
-                inFlight += batchList
-                saveBatchForRetry(batchList)
-            }
-            val jsonArray = PageViews(batchList).toJson()
-            val delivered = try {
-                postCall(url, viewsPayload(appId, jsonArray))
-            } finally {
-                if (persistFirst) synchronized(fileLock) { inFlight -= batchList.toSet() }
-            }
-            if (persistFirst) {
-                if (delivered) removeFromRetry(batchList)
-            } else if (!delivered) saveBatchForRetry(batchList)
-            else retrySavedBatch(url)
-
-            if (verbose) Log.v(TAG, jsonArray.toString())
-        }
-    }
-
-    /**
-     * The server is reachable again: send what earlier failures left in the retry file,
-     * keeping it there until it is delivered.
-     */
-    private fun retrySavedBatch(url: URL) {
-        if (!retrying.compareAndSet(false, true)) return
-        try {
-            val saved = synchronized(fileLock) { readSavedBatchOrEmpty(retryFile()) - inFlight }
-            if (saved.isEmpty()) return
-            if (verbose) Log.v(TAG, "retry ${saved.size} saved page views")
-            if (postCall(url, viewsPayload(appId, PageViews(saved).toJson()))) removeFromRetry(saved)
-        } finally {
-            retrying.set(false)
-        }
-    }
-
-    /**
-     * Post request
-     *
-     * @param url the url
-     * @param jsonObj the jsonObject to send
-     * @return true if the batch was handled by the server and must not be retried
-     */
-    private fun postCall(url: URL, jsonObj: JSONObject): Boolean {
-        var urlConnection: HttpURLConnection? = null
-        return try {
-            urlConnection = url.openConnection() as HttpURLConnection
-            if (urlConnection is HttpsURLConnection) {
-                legacyTlsFactory?.let { urlConnection.sslSocketFactory = it }
-            }
-            urlConnection.connectTimeout = TIMEOUT_CONNECTION
-            urlConnection.readTimeout = TIMEOUT_SOCKET
-            urlConnection.requestMethod = "POST"
-            urlConnection.doOutput = true
-            urlConnection.doInput = true
-            urlConnection.setRequestProperty("Content-Type", "application/json; charset=UTF-8")
-            OutputStreamWriter(urlConnection.outputStream, CHARSET_UTF8).use {
-                it.write(jsonObj.toString())
-            }
-
-            // Read the code first: inputStream throws for 4xx/5xx responses.
-            val handled = handleResponseCode(urlConnection.responseCode)
-            val body = if (urlConnection.responseCode < 400) urlConnection.inputStream
-            else urlConnection.errorStream
-            if (verbose) body?.let { stream ->
-                Log.v(TAG, stream.bufferedReader(CHARSET_UTF8).use { it.readText() })
-            }
-            handled
-        } catch (e: IOException) {
-            // Offline, timeout, DNS…: the batch is saved and retried later
-            Log.w(TAG, "Upload failed (${e.javaClass.simpleName}: ${e.message}), page views kept for retry")
-            false
-        } catch (e: Exception) {
-            // Never throw into the host app (TLS provider bugs, SecurityException…)
-            Log.e(TAG, "Upload failed unexpectedly, page views kept for retry", e)
-            false
-        } finally {
-            urlConnection?.disconnect()
-        }
-    }
-
-    /**
-     * Handle the request response code
-     *
-     * @param responseCode the response code
-     * @return true if the batch must not be retried
-     */
-    private fun handleResponseCode(responseCode: Int): Boolean {
-        return when (responseCode) {
-            200 -> {
-                if (verbose) Log.v(TAG, "OK")
-                true
-            }
-            206 -> {
-                Log.w(TAG, "Some page views were rejected: $CONFIG_HINT")
-                true
-            }
-            400 -> {
-                // Retrying wouldn't help: the views are dropped
-                Log.w(TAG, "Page views rejected by the server (400): $CONFIG_HINT")
-                true
-            }
-            else -> {
-                Log.w(TAG, "Server answered $responseCode, page views kept for retry")
-                false
-            }
-        }
-    }
-
-    private fun retryFile() = File(context.cacheDir, BATCH_SAVE_NAME)
-
-    /**
-     * Append a batch to the retry file.
-     */
-    private fun saveBatchForRetry(failedBatch: List<PageView>) {
-        synchronized(fileLock) {
-            try {
-                val file = retryFile()
-                writeSavedBatch(file, readSavedBatchOrEmpty(file) + failedBatch)
-            } catch (e: Exception) {
-                Log.e(TAG, "Could not access the retry file", e)
-            }
-        }
-    }
-
-    /**
-     * Take a delivered batch back out of the retry file.
-     */
-    private fun removeFromRetry(delivered: List<PageView>) {
-        synchronized(fileLock) {
-            try {
-                val file = retryFile()
-                writeSavedBatch(file, readSavedBatchOrEmpty(file) - delivered.toSet())
-            } catch (e: Exception) {
-                Log.e(TAG, "Could not access the retry file", e)
-            }
-        }
-    }
-
-    /** Writes [views] capped by [capRetryBatch], or deletes the file when nothing is left. */
-    private fun writeSavedBatch(file: File, views: List<PageView>) {
-        val kept = capRetryBatch(views, System.currentTimeMillis())
-        if (kept.isEmpty()) {
-            file.delete()
-            return
-        }
-        file.writeText(JSONObject().put("pageViews", PageViews(kept).toJsonLocal()).toString(), CHARSET_UTF8)
-    }
-
-    /** A corrupt retry file is dropped rather than making every later save fail. */
-    private fun readSavedBatchOrEmpty(file: File): List<PageView> = try {
-        readSavedBatch(file)
-    } catch (e: Exception) {
-        Log.w(TAG, "Corrupt retry file dropped")
-        emptyList()
-    }
-
-    private fun readSavedBatch(file: File): List<PageView> {
-        if (!file.exists()) return emptyList()
-        val array = JSONObject(file.readText(CHARSET_UTF8)).getJSONArray("pageViews")
-        return (0 until array.length()).map { array.getJSONObject(it).toPageView() }
-    }
-
-    private fun restoreBatchForRetry() {
-        synchronized(fileLock) {
-            val cacheFile = retryFile()
-            try {
-                val saved = readSavedBatchOrEmpty(cacheFile)
-                // Views whose upload is running stay in the file, the others go back to the queue
-                synchronized(lock) { batchPageViews.addAll(0, saved - inFlight) }
-                writeSavedBatch(cacheFile, saved.filter { it in inFlight })
-            } catch (e: Exception) {
-                Log.e(TAG, "Could not access the retry file", e)
-            }
-        }
-
-        if (verbose) Log.v(TAG, "reload saved page view")
+        engine.log(page)
     }
 }
