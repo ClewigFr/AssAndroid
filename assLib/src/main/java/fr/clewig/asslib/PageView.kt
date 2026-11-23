@@ -24,7 +24,8 @@ data class PageViews(var pageViews: List<PageView>)
 fun PageView.toJson() = JSONObject().apply {
     put("page", page)
     put("sessionId", sessionId)
-    put("timestamp", System.currentTimeMillis() - timestamp)
+    // A clock moved backwards must not send a negative elapsed time
+    put("timestamp", (System.currentTimeMillis() - timestamp).coerceAtLeast(0))
 }
 
 /**
@@ -80,3 +81,13 @@ internal fun viewsPayload(app: UUID?, pageViews: JSONArray) = JSONObject().apply
     app?.let { put("app", it.toString()) }
     put("pageViews", pageViews)
 }
+
+internal const val MAX_RETRY_VIEWS = 1000
+internal const val MAX_RETRY_AGE_MS = 7L * 24 * 60 * 60 * 1000
+
+/**
+ * What the retry file keeps: views younger than [MAX_RETRY_AGE_MS], at most the
+ * [MAX_RETRY_VIEWS] most recent ones, so a device offline for long can't grow it forever.
+ */
+internal fun capRetryBatch(views: List<PageView>, now: Long): List<PageView> =
+    views.filter { now - it.timestamp <= MAX_RETRY_AGE_MS }.takeLast(MAX_RETRY_VIEWS)

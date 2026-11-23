@@ -1,6 +1,7 @@
 package fr.clewig.asslib
 
 import android.content.Context
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
@@ -17,9 +18,8 @@ import java.io.*
 import java.net.HttpURLConnection
 import java.net.URL
 import java.nio.charset.Charset
-import java.security.KeyManagementException
-import java.security.NoSuchAlgorithmException
 import java.util.*
+import java.util.concurrent.atomic.AtomicBoolean
 import javax.net.ssl.HttpsURLConnection
 
 /**
@@ -58,6 +58,9 @@ class AnonymousSimpleStatsManager(context: Context, private val config: AssConfi
     /** A malformed appId or endpoint disables the library instead of crashing or sending views the server would reject. */
     private val disabled = (config.appId != null && appId == null) || url == null
     /** Nothing thrown in the library's coroutines may reach the host app. */
+    private val retrying = AtomicBoolean(false)
+    /** Views saved to the retry file while their own upload is running: never resent from the file. Guarded by fileLock. */
+    private val inFlight = mutableSetOf<PageView>()
     private val scope = CoroutineScope(
         SupervisorJob() + Dispatchers.IO + CoroutineExceptionHandler { _, e ->
             Log.e(TAG, "Unexpected error, ignored", e)
@@ -66,6 +69,10 @@ class AnonymousSimpleStatsManager(context: Context, private val config: AssConfi
 
     companion object AnonymousSimpleStats :
         AssHolder<AnonymousSimpleStatsManager, Context, AssConfig>(::AnonymousSimpleStatsManager) {
+
+        override fun onExistingInstance(instance: AnonymousSimpleStatsManager, arg: Context, arg2: AssConfig) {
+            if (arg2 != instance.config) Log.w(TAG, "getInstance called again with a different AssConfig: it is ignored, the first one is kept")
+        }
 
         /** Default server for the deprecated getInstance(context, verbose), kept so existing integrations keep compiling. */
         private const val LEGACY_ENDPOINT = "https://ass-api.clewig.fr"
@@ -84,6 +91,17 @@ class AnonymousSimpleStatsManager(context: Context, private val config: AssConfi
         private const val DELAY_BEFORE_BATCH_UPLOAD = 120000
         private const val BATCH_SAVE_NAME = "saved_file.json"
         private const val TAG = "AnonymousSimpleStats"
+
+        /** TLS 1.2 is off by default before API 20: one shared factory to turn it on, null elsewhere. */
+        private val legacyTlsFactory: TLSSocketFactory? by lazy {
+            if (Build.VERSION.SDK_INT >= 20) null
+            else try {
+                TLSSocketFactory()
+            } catch (e: Exception) {
+                Log.e(TAG, "Could not enable TLS 1.2+", e)
+                null
+            }
+        }
         private const val CONFIG_HINT =
             "check that appId and the page UUIDs passed to logScreen come from the same application in the dashboard"
     }
@@ -136,7 +154,7 @@ class AnonymousSimpleStatsManager(context: Context, private val config: AssConfi
             batchPageViews.add(PageView(page, sessionId))
             val isPageViewOldEnough =
                 batchPageViews.first().timestamp + DELAY_BEFORE_BATCH_UPLOAD < System.currentTimeMillis()
-            if (batchPageViews.size > BATCH_THRESHOLD || isPageViewOldEnough) drainBatch() else null
+            if (batchPageViews.size >= BATCH_THRESHOLD || isPageViewOldEnough) drainBatch() else null
         }
         toSend?.let { createAndSendJson(it) }
 
@@ -157,14 +175,38 @@ class AnonymousSimpleStatsManager(context: Context, private val config: AssConfi
         val url = url ?: return
         if (batchList.isEmpty()) return
         scope.launch {
-            if (persistFirst) saveBatchForRetry(batchList)
+            if (persistFirst) synchronized(fileLock) {
+                inFlight += batchList
+                saveBatchForRetry(batchList)
+            }
             val jsonArray = PageViews(batchList).toJson()
-            val delivered = postCall(url, viewsPayload(appId, jsonArray))
+            val delivered = try {
+                postCall(url, viewsPayload(appId, jsonArray))
+            } finally {
+                if (persistFirst) synchronized(fileLock) { inFlight -= batchList.toSet() }
+            }
             if (persistFirst) {
                 if (delivered) removeFromRetry(batchList)
             } else if (!delivered) saveBatchForRetry(batchList)
+            else retrySavedBatch(url)
 
             if (verbose) Log.v(TAG, jsonArray.toString())
+        }
+    }
+
+    /**
+     * The server is reachable again: send what earlier failures left in the retry file,
+     * keeping it there until it is delivered.
+     */
+    private fun retrySavedBatch(url: URL) {
+        if (!retrying.compareAndSet(false, true)) return
+        try {
+            val saved = synchronized(fileLock) { readSavedBatchOrEmpty(retryFile()) - inFlight }
+            if (saved.isEmpty()) return
+            if (verbose) Log.v(TAG, "retry ${saved.size} saved page views")
+            if (postCall(url, viewsPayload(appId, PageViews(saved).toJson()))) removeFromRetry(saved)
+        } finally {
+            retrying.set(false)
         }
     }
 
@@ -180,13 +222,7 @@ class AnonymousSimpleStatsManager(context: Context, private val config: AssConfi
         return try {
             urlConnection = url.openConnection() as HttpURLConnection
             if (urlConnection is HttpsURLConnection) {
-                try {
-                    urlConnection.sslSocketFactory = TLSSocketFactory()
-                } catch (e: KeyManagementException) {
-                    Log.e(TAG, "Could not enable TLS 1.2+", e)
-                } catch (e: NoSuchAlgorithmException) {
-                    Log.e(TAG, "Could not enable TLS 1.2+", e)
-                }
+                legacyTlsFactory?.let { urlConnection.sslSocketFactory = it }
             }
             urlConnection.connectTimeout = TIMEOUT_CONNECTION
             urlConnection.readTimeout = TIMEOUT_SOCKET
@@ -202,7 +238,9 @@ class AnonymousSimpleStatsManager(context: Context, private val config: AssConfi
             val handled = handleResponseCode(urlConnection.responseCode)
             val body = if (urlConnection.responseCode < 400) urlConnection.inputStream
             else urlConnection.errorStream
-            body?.let { if (verbose) Log.v(TAG, convertStreamToString(BufferedInputStream(it)) ?: "") }
+            if (verbose) body?.let { stream ->
+                Log.v(TAG, stream.bufferedReader(CHARSET_UTF8).use { it.readText() })
+            }
             handled
         } catch (e: IOException) {
             // Offline, timeout, DNS…: the batch is saved and retried later
@@ -226,7 +264,7 @@ class AnonymousSimpleStatsManager(context: Context, private val config: AssConfi
     private fun handleResponseCode(responseCode: Int): Boolean {
         return when (responseCode) {
             200 -> {
-                Log.v(TAG, "OK")
+                if (verbose) Log.v(TAG, "OK")
                 true
             }
             206 -> {
@@ -245,18 +283,16 @@ class AnonymousSimpleStatsManager(context: Context, private val config: AssConfi
         }
     }
 
+    private fun retryFile() = File(context.cacheDir, BATCH_SAVE_NAME)
+
     /**
-     * Append a failed batch to the retry file, which is reloaded on the next launch.
+     * Append a batch to the retry file.
      */
     private fun saveBatchForRetry(failedBatch: List<PageView>) {
         synchronized(fileLock) {
             try {
-                val file = File(context.cacheDir, BATCH_SAVE_NAME)
-                val all = readSavedBatch(file) + failedBatch
-                file.writeText(
-                    JSONObject().put("pageViews", PageViews(all).toJsonLocal()).toString(),
-                    CHARSET_UTF8
-                )
+                val file = retryFile()
+                writeSavedBatch(file, readSavedBatchOrEmpty(file) + failedBatch)
             } catch (e: Exception) {
                 Log.e(TAG, "Could not access the retry file", e)
             }
@@ -264,22 +300,35 @@ class AnonymousSimpleStatsManager(context: Context, private val config: AssConfi
     }
 
     /**
-     * Take a delivered batch back out of the retry file (it was saved before sending).
+     * Take a delivered batch back out of the retry file.
      */
     private fun removeFromRetry(delivered: List<PageView>) {
         synchronized(fileLock) {
             try {
-                val file = File(context.cacheDir, BATCH_SAVE_NAME)
-                val remaining = readSavedBatch(file) - delivered.toSet()
-                if (remaining.isEmpty()) file.delete()
-                else file.writeText(
-                    JSONObject().put("pageViews", PageViews(remaining).toJsonLocal()).toString(),
-                    CHARSET_UTF8
-                )
+                val file = retryFile()
+                writeSavedBatch(file, readSavedBatchOrEmpty(file) - delivered.toSet())
             } catch (e: Exception) {
                 Log.e(TAG, "Could not access the retry file", e)
             }
         }
+    }
+
+    /** Writes [views] capped by [capRetryBatch], or deletes the file when nothing is left. */
+    private fun writeSavedBatch(file: File, views: List<PageView>) {
+        val kept = capRetryBatch(views, System.currentTimeMillis())
+        if (kept.isEmpty()) {
+            file.delete()
+            return
+        }
+        file.writeText(JSONObject().put("pageViews", PageViews(kept).toJsonLocal()).toString(), CHARSET_UTF8)
+    }
+
+    /** A corrupt retry file is dropped rather than making every later save fail. */
+    private fun readSavedBatchOrEmpty(file: File): List<PageView> = try {
+        readSavedBatch(file)
+    } catch (e: Exception) {
+        Log.w(TAG, "Corrupt retry file dropped")
+        emptyList()
     }
 
     private fun readSavedBatch(file: File): List<PageView> {
@@ -290,38 +339,17 @@ class AnonymousSimpleStatsManager(context: Context, private val config: AssConfi
 
     private fun restoreBatchForRetry() {
         synchronized(fileLock) {
-            val cacheFile = File(context.cacheDir, BATCH_SAVE_NAME)
+            val cacheFile = retryFile()
             try {
-                val saved = readSavedBatch(cacheFile)
-                synchronized(lock) { batchPageViews.addAll(0, saved) }
+                val saved = readSavedBatchOrEmpty(cacheFile)
+                // Views whose upload is running stay in the file, the others go back to the queue
+                synchronized(lock) { batchPageViews.addAll(0, saved - inFlight) }
+                writeSavedBatch(cacheFile, saved.filter { it in inFlight })
             } catch (e: Exception) {
                 Log.e(TAG, "Could not access the retry file", e)
-            } finally {
-                cacheFile.delete()
             }
         }
 
         if (verbose) Log.v(TAG, "reload saved page view")
-    }
-
-
-    /**
-     * Convert a stream to string
-     *
-     * @param inputStream the [InputStream]
-     */
-    private fun convertStreamToString(inputStream: InputStream): String? {
-        val sb = StringBuilder()
-        var line: String?
-
-        val br = BufferedReader(InputStreamReader(inputStream))
-        line = br.readLine()
-
-        while (line != null) {
-            sb.append(line)
-            line = br.readLine()
-        }
-        br.close()
-        return sb.toString()
     }
 }
