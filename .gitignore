@@ -20,8 +20,9 @@ captures/
 .externalNativeBuild/
 .cxx/
 
-# Claude Code local settings (launch configs with local paths)
+# Claude Code: local settings (launch configs with local paths) and project notes
 .claude/
+CLAUDE.md
 
 # OS
 .DS_Store
