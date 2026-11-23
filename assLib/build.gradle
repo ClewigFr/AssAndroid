@@ -59,6 +59,12 @@ afterEvaluate {
                     name = 'Anonymous Simple Stats'
                     description = 'Anonymous, batched screen-view tracker for Android'
                     url = 'https://github.com/ClewigFr/AssAndroid'
+                    licenses {
+                        license {
+                            name = 'MIT License'
+                            url = 'https://opensource.org/licenses/MIT'
+                        }
+                    }
                 }
             }
         }

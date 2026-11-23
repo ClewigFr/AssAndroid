@@ -1,6 +1,7 @@
 # AssAndroid — Anonymous Simple Stats
 
 [![CI](https://github.com/ClewigFr/AssAndroid/actions/workflows/ci.yml/badge.svg)](https://github.com/ClewigFr/AssAndroid/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![JitPack](https://jitpack.io/v/ClewigFr/AssAndroid.svg)](https://jitpack.io/#ClewigFr/AssAndroid)
 
 A lightweight, anonymous Android library for tracking screen views.
@@ -107,3 +108,7 @@ The library declares only the `INTERNET` permission in its manifest, and has no 
 ```
 
 Requirements: JDK 17 to build (AGP 8.7, Gradle 8.9). minSdk 16, compileSdk 35.
+
+## License
+
+[MIT](LICENSE) © Clewig
