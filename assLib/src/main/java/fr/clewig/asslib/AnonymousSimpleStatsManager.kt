@@ -55,8 +55,8 @@ class AnonymousSimpleStatsManager(context: Context, private val config: AssConfi
     companion object AnonymousSimpleStats :
         AssHolder<AnonymousSimpleStatsManager, Context, AssConfig>(::AnonymousSimpleStatsManager) {
 
-        /** Former default server, kept so existing integrations keep compiling. */
-        private const val LEGACY_ENDPOINT = "https://gentle-inlet-02091.herokuapp.com"
+        /** Default server for the deprecated getInstance(context, verbose), kept so existing integrations keep compiling. */
+        private const val LEGACY_ENDPOINT = "https://ass-api.clewig.fr"
 
         @Deprecated(
             "Pass the backend URL explicitly",
