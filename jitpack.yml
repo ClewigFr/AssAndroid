@@ -1,0 +1,5 @@
+# https://jitpack.io: builds a tag into com.github.ClewigFr:AssAndroid:<tag>
+jdk:
+  - openjdk17
+install:
+  - ./gradlew :assLib:publishToMavenLocal -Pversion=$VERSION

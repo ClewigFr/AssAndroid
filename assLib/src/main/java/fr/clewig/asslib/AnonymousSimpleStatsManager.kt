@@ -15,24 +15,24 @@ import java.util.concurrent.Executors
  *   Page views are only accepted for pages of this application.
  * @param verbose log every event (debug builds only)
  */
-data class AssConfig(
-    val endpoint: String,
-    val appId: String?,
-    val verbose: Boolean = false
+public data class AssConfig(
+    public val endpoint: String,
+    public val appId: String?,
+    public val verbose: Boolean = false
 )
 
 /**
  * Entry point of the library: get it with [getInstance], then call [logScreen] on every screen.
  * Never throws into the host app; a bad configuration only disables it (see the logs).
  */
-class AnonymousSimpleStatsManager(context: Context, private val config: AssConfig) {
+public class AnonymousSimpleStatsManager(context: Context, private val config: AssConfig) {
 
     private val log: AssLog = AndroidLog(config.verbose)
 
     /** Null when the configuration is invalid: the library is then disabled. */
     private val engine: StatsEngine? = createEngine(context.applicationContext ?: context)
 
-    companion object AnonymousSimpleStats :
+    public companion object AnonymousSimpleStats :
         AssHolder<AnonymousSimpleStatsManager, Context, AssConfig>(::AnonymousSimpleStatsManager) {
 
         /** Default server for the deprecated getInstance(context, verbose), kept so existing integrations keep compiling. */
@@ -43,7 +43,7 @@ class AnonymousSimpleStatsManager(context: Context, private val config: AssConfi
             "Pass the backend URL explicitly",
             ReplaceWith("getInstance(context, AssConfig(endpoint = \"https://…\", appId = \"…\", verbose = verbose))")
         )
-        fun getInstance(context: Context, verbose: Boolean): AnonymousSimpleStatsManager =
+        public fun getInstance(context: Context, verbose: Boolean): AnonymousSimpleStatsManager =
             getInstance(context, AssConfig(LEGACY_ENDPOINT, appId = null, verbose = verbose))
 
         override fun onExistingInstance(instance: AnonymousSimpleStatsManager, arg: Context, arg2: AssConfig) {
@@ -102,7 +102,7 @@ class AnonymousSimpleStatsManager(context: Context, private val config: AssConfi
      *
      * @param pageId the page UUID from the dashboard; anything else is ignored with a warning
      */
-    fun logScreen(pageId: String) {
+    public fun logScreen(pageId: String) {
         val engine = engine ?: return
         val page = try {
             UUID.fromString(pageId)

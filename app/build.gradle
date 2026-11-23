@@ -12,8 +12,6 @@ android {
         versionCode 1
         versionName "1.0"
 
-        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
-
         // Demo configuration, overridable from the command line, e.g.
         // ./gradlew :app:installDebug -PassEndpoint=http://10.0.2.2:8099 -PassAppId=<uuid> -PassPages=<uuid>,<uuid>
         buildConfigField "String", "ASS_ENDPOINT", "\"${project.findProperty('assEndpoint') ?: 'http://10.0.2.2:8099'}\""
@@ -45,7 +43,4 @@ android {
 dependencies {
     implementation project(":assLib")
     implementation 'androidx.appcompat:appcompat:1.6.1' // last line supporting minSdk 16
-    testImplementation 'junit:junit:4.13.2'
-    androidTestImplementation 'androidx.test.ext:junit:1.1.3'
-    androidTestImplementation 'androidx.test.espresso:espresso-core:3.4.0'
 }

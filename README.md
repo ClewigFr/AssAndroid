@@ -1,5 +1,8 @@
 # AssAndroid — Anonymous Simple Stats
 
+[![CI](https://github.com/ClewigFr/AssAndroid/actions/workflows/ci.yml/badge.svg)](https://github.com/ClewigFr/AssAndroid/actions/workflows/ci.yml)
+[![JitPack](https://jitpack.io/v/ClewigFr/AssAndroid.svg)](https://jitpack.io/#ClewigFr/AssAndroid)
+
 A lightweight, anonymous Android library for tracking screen views.
 
 Simple Stats collects no user identifiers, no device IDs and no personal data. Each screen view is sent as:
@@ -15,6 +18,26 @@ Simple Stats collects no user identifiers, no device IDs and no personal data. E
 
 - `assLib`: the library.
 - `app`: a sample app that shows how to integrate it.
+
+## Installation
+
+The library is published through [JitPack](https://jitpack.io/#ClewigFr/AssAndroid). It needs minSdk 16 or higher, declares only the `INTERNET` permission and has no dependency besides the Kotlin standard library.
+
+```groovy
+// settings.gradle (or the root build.gradle)
+dependencyResolutionManagement {
+    repositories {
+        google()
+        mavenCentral()
+        maven { url 'https://jitpack.io' }
+    }
+}
+
+// app/build.gradle
+dependencies {
+    implementation 'com.github.ClewigFr:AssAndroid:0.3.0'
+}
+```
 
 ## Integration
 

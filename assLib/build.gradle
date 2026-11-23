@@ -1,5 +1,11 @@
 apply plugin: 'com.android.library'
 apply plugin: 'kotlin-android'
+apply plugin: 'maven-publish'
+
+// JitPack builds the git tag and passes it as -Pversion; local builds use this one.
+// Coordinates on JitPack: com.github.ClewigFr:AssAndroid:<tag>
+group = 'com.github.ClewigFr'
+version = project.findProperty('version') != 'unspecified' ? project.findProperty('version') : '0.3.0'
 
 android {
     namespace "fr.clewig.asslib"
@@ -7,10 +13,6 @@ android {
 
     defaultConfig {
         minSdk 16
-            versionCode 1
-        versionName "1.0"
-
-        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         consumerProguardFiles "consumer-rules.pro"
     }
     compileOptions {
@@ -25,9 +27,19 @@ android {
     buildTypes {
         release {
             minifyEnabled false
-            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
+
+    publishing {
+        singleVariant('release') {
+            withSourcesJar()
+        }
+    }
+}
+
+// Every public declaration of the library (not its tests) must say so: nothing becomes API by accident
+kotlin {
+    explicitApi()
 }
 
 dependencies {
@@ -35,5 +47,20 @@ dependencies {
 
     testImplementation 'junit:junit:4.13.2'
     testImplementation 'org.json:json:20240303' // real org.json for JVM tests
-    androidTestImplementation 'androidx.test.ext:junit:1.1.3' // last version supporting minSdk 16
+}
+
+afterEvaluate {
+    publishing {
+        publications {
+            release(MavenPublication) {
+                from components.release
+                artifactId = 'assLib'
+                pom {
+                    name = 'Anonymous Simple Stats'
+                    description = 'Anonymous, batched screen-view tracker for Android'
+                    url = 'https://github.com/ClewigFr/AssAndroid'
+                }
+            }
+        }
+    }
 }

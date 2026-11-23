@@ -12,7 +12,7 @@ Anonymous Simple Stats (ASS): an anonymous, batched screen-view tracker for Andr
   - `AssLog.kt`: logging interface (`AndroidLog` in the library, `FakeLog` in tests).
   - `AssHolder.kt`: a generic double-checked-locking singleton holder, used as the manager's companion object.
   - `PageView.kt`: the (internal) data model and JSON (de)serialization extensions.
-  - `TLSSocketFactory.kt`: turns on TLS 1.1/1.2 for API 16–19.
+  - `TLSSocketFactory.kt`: turns on TLS 1.2/1.3 for API 16–19 (never SSLv3 or TLS 1.0/1.1).
 - `app/` is a sample integration only (`MainActivity`).
 - `AI_INTEGRATION.md`: instructions for AI assistants integrating the library into an app (screen list → CSV → dashboard → generated ids and `logScreen` calls). Keep it in step with the public API and the dashboard's CSV format.
 
@@ -28,4 +28,9 @@ Anonymous Simple Stats (ASS): an anonymous, batched screen-view tracker for Andr
 ## Build and test
 - `./gradlew :assLib:assembleDebug`
 - `./gradlew :assLib:testDebugUnitTest` (JVM tests per component; `StatsEngineTest` drives the engine with a fake uploader, clock and an executor that runs tasks inline)
-- Toolchain: AGP 8.7.3, Gradle 8.9, Kotlin 2.0.21; needs JDK 17. minSdk 16, compileSdk 35, targetSdk 29, Java 8 bytecode.
+- Toolchain: AGP 8.7.3, Gradle 8.9, Kotlin 2.0.21; needs JDK 17. Library: minSdk 16, compileSdk 35, Java 8 bytecode; sample app targetSdk 35.
+- The library is in Kotlin explicit API mode: only `AssConfig`, `AnonymousSimpleStatsManager` and `AssHolder` are public, everything else stays `internal`.
+
+## Releasing
+- Published through JitPack (`jitpack.yml` runs `:assLib:publishToMavenLocal -Pversion=<tag>`), coordinates `com.github.ClewigFr:AssAndroid:<tag>`.
+- To release: bump the default `version` in `assLib/build.gradle`, add a `CHANGELOG.md` entry, update the version in README.md and AI_INTEGRATION.md, then tag `X.Y.Z` and push the tag.

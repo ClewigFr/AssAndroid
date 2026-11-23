@@ -5,6 +5,10 @@ on:
     branches: [master]
   pull_request:
 
+# Pull requests from forks run with a read-only token
+permissions:
+  contents: read
+
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
@@ -21,7 +25,8 @@ jobs:
           java-version: 17
       - uses: gradle/actions/setup-gradle@v4
       # The Android SDK is preinstalled on GitHub's Ubuntu runners
-      - run: ./gradlew :assLib:testDebugUnitTest :assLib:lintDebug :app:assembleDebug
+      # publishToMavenLocal is what JitPack runs: a broken publication fails here first
+      - run: ./gradlew :assLib:testDebugUnitTest :assLib:lintDebug :app:assembleDebug :assLib:publishToMavenLocal
       - name: Reports
         if: failure()
         uses: actions/upload-artifact@v4
