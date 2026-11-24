@@ -96,6 +96,14 @@ The library declares only the `INTERNET` permission in its manifest, and has no 
 | `429` / `503` | Rate limited / server busy           | Saves the batch, waits for `Retry-After` |
 | other | Server error                                  | Saves the batch to retry later |
 
+### Limits of the hosted service
+
+Each account on the server has, by default:
+- **5 applications** and **30 pages per application**. The dashboard refuses to create more, and a CSV import that would go over is refused as a whole.
+- **100,000 page views per month** (calendar month, UTC, all the account's applications together). This is a soft limit: views keep being recorded, and the dashboard shows an alert. The library is never refused views because of it.
+
+A self-hosted backend sets its own values (`MAX_APPS`, `MAX_PAGES_PER_APP`, `MAX_MONTHLY_VIEWS`, `0` for no limit): see the backend's README.
+
 ## Related repositories
 
 - **AssBackend**: the API that receives the page views
