@@ -53,7 +53,10 @@ internal class StatsEngine(
         if (toSend.isEmpty()) return
         serial.execute {
             store.add(toSend)
-            if (upload(toSend)) store.remove(toSend)
+            if (upload(toSend)) {
+                store.remove(toSend)
+                retrySaved() // the server is reachable again
+            }
         }
     }
 

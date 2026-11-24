@@ -28,6 +28,15 @@ class RetryStoreTest {
     }
 
     @Test
+    fun writeLeavesNoTemporaryFile() {
+        val store = RetryStore(folder.root.resolve("retry.json"), clock, FakeLog())
+        store.add(listOf(view()))
+        store.add(listOf(view()))
+        assertEquals(2, store.read().size)
+        assertEquals(listOf("retry.json"), folder.root.list()!!.toList())
+    }
+
+    @Test
     fun corruptFileIsReplaced() {
         val file = folder.root.resolve("retry.json").apply { writeText("{oops") }
         val store = RetryStore(file, clock, FakeLog())

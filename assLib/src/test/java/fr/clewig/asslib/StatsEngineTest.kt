@@ -91,6 +91,22 @@ class StatsEngineTest {
     }
 
     @Test
+    fun deliveredFlushAlsoResendsWhatWasSaved() {
+        val engine = engine()
+        serverUp = false
+        engine.log(UUID.randomUUID())
+        engine.flush()
+        assertEquals(1, store.read().size)
+
+        serverUp = true
+        clock.now += StatsEngine.MIN_BACKOFF_MS
+        engine.log(UUID.randomUUID())
+        engine.flush()
+        assertEquals(listOf(1, 1), sent.map { it.count() })
+        assertTrue(store.read().isEmpty())
+    }
+
+    @Test
     fun startResendsWhatThePreviousRunSaved() {
         store.add(listOf(PageView(UUID.randomUUID(), UUID.randomUUID(), clock.now - 5_000)))
         clock.now += 1_000

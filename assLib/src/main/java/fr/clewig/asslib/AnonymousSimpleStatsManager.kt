@@ -32,12 +32,28 @@ public class AnonymousSimpleStatsManager(context: Context, private val config: A
     /** Null when the configuration is invalid: the library is then disabled. */
     private val engine: StatsEngine? = createEngine(context.applicationContext ?: context)
 
-    public companion object AnonymousSimpleStats :
-        AssHolder<AnonymousSimpleStatsManager, Context, AssConfig>(::AnonymousSimpleStatsManager) {
+    public companion object AnonymousSimpleStats {
 
         /** Default server for the deprecated getInstance(context, verbose), kept so existing integrations keep compiling. */
         private const val LEGACY_ENDPOINT = "https://ass-api.clewig.fr"
         private const val RETRY_FILE_NAME = "saved_file.json"
+
+        @Volatile
+        private var instance: AnonymousSimpleStatsManager? = null
+
+        /**
+         * The single instance, created on the first call; later calls return it and ignore
+         * their arguments (with a warning when [config] differs).
+         */
+        public fun getInstance(context: Context, config: AssConfig): AnonymousSimpleStatsManager {
+            val existing = instance ?: synchronized(this) {
+                instance ?: return AnonymousSimpleStatsManager(context, config).also { instance = it }
+            }
+            if (config != existing.config) {
+                existing.log.w("getInstance called again with a different AssConfig: it is ignored, the first one is kept")
+            }
+            return existing
+        }
 
         @Deprecated(
             "Pass the backend URL explicitly",
@@ -45,12 +61,6 @@ public class AnonymousSimpleStatsManager(context: Context, private val config: A
         )
         public fun getInstance(context: Context, verbose: Boolean): AnonymousSimpleStatsManager =
             getInstance(context, AssConfig(LEGACY_ENDPOINT, appId = null, verbose = verbose))
-
-        override fun onExistingInstance(instance: AnonymousSimpleStatsManager, arg: Context, arg2: AssConfig) {
-            if (arg2 != instance.config) {
-                instance.log.w("getInstance called again with a different AssConfig: it is ignored, the first one is kept")
-            }
-        }
     }
 
     private fun createEngine(context: Context): StatsEngine? {
@@ -63,6 +73,9 @@ public class AnonymousSimpleStatsManager(context: Context, private val config: A
         if (url == null) {
             log.e("Invalid endpoint \"${config.endpoint}\": it must be an http(s) URL. Stats are disabled.")
             return null
+        }
+        if (url.protocol == "http") {
+            log.w("Endpoint \"${config.endpoint}\" is cleartext http: Android 9+ blocks it unless the app's network security config allows it")
         }
         val clock = { System.currentTimeMillis() }
         return StatsEngine(

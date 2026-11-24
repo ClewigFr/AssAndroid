@@ -98,7 +98,7 @@ Match each line to its screen by name. If phase 1's `ass-pages.csv` is still the
 Use one of these, in order of preference:
 
 - **Option A: it's already in the project** as a module or an AAR. Then use that.
-- **Option J: from JitPack.** Add `maven { url 'https://jitpack.io' }` to the repositories (in `settings.gradle`'s `dependencyResolutionManagement`, or the root `build.gradle`), then `implementation 'com.github.ClewigFr:AssAndroid:0.3.0'`. Use the latest tag from https://github.com/ClewigFr/AssAndroid/tags.
+- **Option J: from JitPack.** Add `maven { url 'https://jitpack.io' }` to the repositories (in `settings.gradle`'s `dependencyResolutionManagement`, or the root `build.gradle`), then `implementation 'com.github.ClewigFr:AssAndroid:0.3.1'`. Use the latest tag from https://github.com/ClewigFr/AssAndroid/tags.
 - **Option B: as a module.** Copy the `assLib` folder into the project, then:
   ```groovy
   // settings.gradle

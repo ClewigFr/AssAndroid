@@ -1,3 +1,5 @@
+@file:Suppress("DEPRECATION")
+
 package fr.clewig.asslib
 
 import org.junit.Assert.assertEquals

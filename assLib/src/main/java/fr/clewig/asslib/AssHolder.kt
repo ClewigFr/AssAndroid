@@ -1,5 +1,7 @@
 package fr.clewig.asslib
 
+/** A double-checked-locking singleton holder. */
+@Deprecated("Not meant to be used by apps; will be removed in 0.4.0. Use AnonymousSimpleStatsManager.getInstance.")
 public open class AssHolder<out T : Any, in A, in B>(creator: (A, B) -> T) {
     private var creator: ((A, B) -> T)? = creator
     @Volatile

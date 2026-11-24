@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.3.1
+
+### Fixed
+- Page views saved during an outage are sent again as soon as a background flush gets
+  through, not only at the next app start or after a full batch of 20.
+- The retry file is written aside then renamed: a process killed while writing it no longer
+  loses the saved page views.
+
+### Changed
+- A cleartext `http://` endpoint logs a warning (Android 9+ blocks it by default).
+- `AssHolder` is deprecated and will be removed in 0.4.0; `getInstance` is unchanged.
+
 ## 0.3.0
 
 First public release.
