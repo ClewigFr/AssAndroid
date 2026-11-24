@@ -36,7 +36,7 @@ dependencyResolutionManagement {
 
 // app/build.gradle
 dependencies {
-    implementation 'com.github.ClewigFr:AssAndroid:0.3.1'
+    implementation 'com.github.ClewigFr:AssAndroid:0.4.0'
 }
 ```
 

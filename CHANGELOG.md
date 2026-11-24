@@ -1,11 +1,16 @@
 # Changelog
 
-## Unreleased
+## 0.4.0
+
+Breaking changes: initialize with `getInstance(context, AssConfig(endpoint, appId, verbose))`,
+`appId` being the application UUID from the dashboard. Apps already doing so only need the new
+version number.
 
 ### Removed
 - `getInstance(context, verbose)`, deprecated since 0.3.0. It sent views without an application
   UUID, which the backend now refuses (unless it runs with `LEGACY_VIEWS=true`): views were lost.
   Use `getInstance(context, AssConfig(endpoint, appId, verbose))`.
+- `AssHolder`, deprecated since 0.3.1: a singleton helper that apps weren't meant to use.
 
 ### Changed
 - `AssConfig.appId` is required (`String`, no longer `String?`): views without an application
