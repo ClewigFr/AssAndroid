@@ -46,6 +46,7 @@ Skip:
 
 - Use a short name, as the app's team would say it, in the app's language, for example `Accueil`, `Panier`, `Paiement – Adresse`. These names are what people will read in the stats.
 - Keep names unique within the app, and at most 255 characters each.
+- The dashboard allows **30 pages per application** by default, and an import that would go over is refused. If the app has more screens, group the minor ones (settings sub-screens, steps of a flow) or keep the ones the team cares about, and say which ones you left out.
 - **One screen used in several modes** (for example, editing and creating a product): use one page, unless the team needs the modes counted separately.
 - **One screen showing many different items** (for example, a product page): always one page. Never one page per product or per ID.
 
