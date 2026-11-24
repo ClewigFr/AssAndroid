@@ -132,6 +132,7 @@ A self-hosted backend sets its own values (`MAX_APPS`, `MAX_PAGES_PER_APP`, `MAX
 
 ```bash
 ./gradlew :assLib:assembleRelease
+./gradlew :assLib:testDebugUnitTest :assCompose:testDebugUnitTest   # JVM tests, no emulator (Robolectric for Compose)
 ```
 
 Requirements: JDK 17 to build (AGP 8.7, Gradle 8.9). minSdk 16, compileSdk 35.

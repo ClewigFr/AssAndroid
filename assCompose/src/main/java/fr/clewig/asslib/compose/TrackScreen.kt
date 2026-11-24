@@ -26,12 +26,18 @@ import fr.clewig.asslib.AnonymousSimpleStatsManager
  */
 @Composable
 public fun TrackScreen(stats: AnonymousSimpleStatsManager, pageId: String) {
+    TrackScreen(pageId, stats, stats::logScreen)
+}
+
+/** [TrackScreen] with the logging function apart, for the tests. [key] identifies where views go. */
+@Composable
+internal fun TrackScreen(pageId: String, key: Any, logScreen: (String) -> Unit) {
     val lifecycleOwner = LocalLifecycleOwner.current
     // Keyed on pageId too: the same composable showing another page logs it at once
-    DisposableEffect(lifecycleOwner, stats, pageId) {
+    DisposableEffect(lifecycleOwner, key, pageId) {
         // A new observer receives the events up to the current state, so ON_RESUME comes at once when already resumed
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) stats.logScreen(pageId)
+            if (event == Lifecycle.Event.ON_RESUME) logScreen(pageId)
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }

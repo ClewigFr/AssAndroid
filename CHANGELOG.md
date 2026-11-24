@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Tests
+- `TrackScreen` is covered by JVM tests (Robolectric): logged once when shown, again at each return
+  to the foreground, never on recomposition, not before the screen is resumed, again when the page
+  changes, and no more once the screen is gone. No change to the library.
+
 ## 0.5.0
 
 ### Added

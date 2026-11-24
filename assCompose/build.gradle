@@ -23,6 +23,10 @@ android {
     kotlinOptions {
         jvmTarget = JavaVersion.VERSION_1_8.toString()
     }
+    testOptions {
+        // Robolectric runs the Compose tests on the JVM, no emulator
+        unitTests.includeAndroidResources = true
+    }
     publishing {
         singleVariant('release') {
             withSourcesJar()
@@ -39,6 +43,13 @@ dependencies {
     // An app using this module already has Compose; these are the versions it's built against
     implementation 'androidx.compose.runtime:runtime:1.7.6'
     implementation 'androidx.lifecycle:lifecycle-runtime-compose:2.8.7'
+
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.robolectric:robolectric:4.14.1'
+    testImplementation 'androidx.compose.ui:ui-test-junit4:1.7.6'
+    testImplementation 'androidx.lifecycle:lifecycle-runtime-testing:2.8.7'
+    // The empty activity the Compose test rule starts (debug only: never in the published release)
+    debugImplementation 'androidx.compose.ui:ui-test-manifest:1.7.6'
 }
 
 afterEvaluate {
