@@ -100,7 +100,7 @@ Match each line to its screen by name. If phase 1's `ass-pages.csv` is still the
 Use one of these, in order of preference:
 
 - **Option A: it's already in the project** as a module or an AAR. Then use that.
-- **Option J: from JitPack.** Add `maven { url 'https://jitpack.io' }` to the repositories (in `settings.gradle`'s `dependencyResolutionManagement`, or the root `build.gradle`), then `implementation 'com.github.ClewigFr:AssAndroid:0.4.0'`. Use the latest tag from https://github.com/ClewigFr/AssAndroid/tags.
+- **Option J: from JitPack.** Add `maven { url 'https://jitpack.io' }` to the repositories (in `settings.gradle`'s `dependencyResolutionManagement`, or the root `build.gradle`), then `implementation 'com.github.ClewigFr.AssAndroid:assLib:0.5.0'`, or `com.github.ClewigFr.AssAndroid:assCompose:0.5.0` for a Jetpack Compose app (it includes `assLib`, see step 4). Use the latest tag from https://github.com/ClewigFr/AssAndroid/tags. Never the short `com.github.ClewigFr:AssAndroid`: since 0.5.0 it brings both modules.
 - **Option B: as a module.** Copy the `assLib` folder into the project, then:
   ```groovy
   // settings.gradle
@@ -196,6 +196,18 @@ override fun onResume() {
 Use `onResume`, not `onCreate` or `onViewCreated`: those don't run again when the user comes back. With a `ViewPager`/`ViewPager2` of fragments, use `onResume` too. With the default `BEHAVIOR_RESUME_ONLY_CURRENT_FRAGMENT` / `FragmentStateAdapter`, it only runs for the visible page.
 
 **Jetpack Compose, inside the screen**
+
+With the `assCompose` module (minSdk 21), `TrackScreen` logs the screen when it's shown and each time the app comes back to the foreground with it, like `onResume`:
+```kotlin
+@Composable
+fun CartScreen(…) {
+    val context = LocalContext.current
+    TrackScreen(context.ass(), AssPages.PANIER)
+    …
+}
+```
+
+Without the module (minSdk below 21, or no extra dependency wanted), `LaunchedEffect` logs it on entry only, not when the app comes back to the foreground:
 ```kotlin
 @Composable
 fun CartScreen(…) {

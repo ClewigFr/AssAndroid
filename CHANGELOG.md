@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.5.0
 
 ### Added
 - `assCompose`, an optional module for Jetpack Compose: `TrackScreen(stats, pageId)` logs a view

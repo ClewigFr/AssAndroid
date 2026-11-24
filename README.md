@@ -18,7 +18,7 @@ Simple Stats collects no user identifiers, no device IDs and no personal data. E
 ## Modules
 
 - `assLib`: the library.
-- `assCompose`: optional Jetpack Compose helpers (`TrackScreen`), from the next version.
+- `assCompose`: optional Jetpack Compose helpers (`TrackScreen`).
 - `app`: a sample app that shows how to integrate it.
 
 ## Installation
@@ -37,17 +37,18 @@ dependencyResolutionManagement {
 
 // app/build.gradle
 dependencies {
-    implementation 'com.github.ClewigFr:AssAndroid:0.4.0'
+    implementation 'com.github.ClewigFr.AssAndroid:assLib:0.5.0'
 }
 ```
 
-### Jetpack Compose (next version)
+Since 0.5.0 the repository publishes two modules, each with its own coordinates. Don't use the short `com.github.ClewigFr:AssAndroid:<version>`: it brings both modules, Compose included. Versions up to 0.4.0 were only published as `com.github.ClewigFr:AssAndroid:<version>`.
 
-From the next release, an optional module logs a screen from Compose. It needs minSdk 21, and brings Compose runtime and lifecycle, which a Compose app already has; `assLib` stays dependency-free. The repository then has two modules, so each is added by its own coordinates:
+### Jetpack Compose
+
+An optional module logs a screen from Compose. It needs minSdk 21, and brings Compose runtime and lifecycle, which a Compose app already has; `assLib` stays dependency-free.
 
 ```groovy
-implementation 'com.github.ClewigFr.AssAndroid:assLib:<version>'
-implementation 'com.github.ClewigFr.AssAndroid:assCompose:<version>' // only for Compose
+implementation 'com.github.ClewigFr.AssAndroid:assCompose:0.5.0' // includes assLib
 ```
 
 ```kotlin
