@@ -18,6 +18,7 @@ Simple Stats collects no user identifiers, no device IDs and no personal data. E
 ## Modules
 
 - `assLib`: the library.
+- `assCompose`: optional Jetpack Compose helpers (`TrackScreen`), from the next version.
 - `app`: a sample app that shows how to integrate it.
 
 ## Installation
@@ -37,6 +38,23 @@ dependencyResolutionManagement {
 // app/build.gradle
 dependencies {
     implementation 'com.github.ClewigFr:AssAndroid:0.4.0'
+}
+```
+
+### Jetpack Compose (next version)
+
+From the next release, an optional module logs a screen from Compose. It needs minSdk 21, and brings Compose runtime and lifecycle, which a Compose app already has; `assLib` stays dependency-free. The repository then has two modules, so each is added by its own coordinates:
+
+```groovy
+implementation 'com.github.ClewigFr.AssAndroid:assLib:<version>'
+implementation 'com.github.ClewigFr.AssAndroid:assCompose:<version>' // only for Compose
+```
+
+```kotlin
+@Composable
+fun CartScreen() {
+    TrackScreen(stats, AssPages.PANIER) // logs on entry and each time the app comes back to the foreground
+    …
 }
 ```
 

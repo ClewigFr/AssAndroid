@@ -1,0 +1,64 @@
+apply plugin: 'com.android.library'
+apply plugin: 'kotlin-android'
+apply plugin: 'org.jetbrains.kotlin.plugin.compose'
+apply plugin: 'maven-publish'
+
+// Optional Jetpack Compose helpers. Kept out of assLib, which has no dependency at all.
+// Coordinates on JitPack: com.github.ClewigFr.AssAndroid:assCompose:<tag>
+group = 'com.github.ClewigFr.AssAndroid'
+version = project.findProperty('version') != 'unspecified' ? project.findProperty('version') : rootProject.project(':assLib').version
+
+android {
+    namespace "fr.clewig.asslib.compose"
+    compileSdk 35
+
+    defaultConfig {
+        // Compose itself needs API 21
+        minSdk 21
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+    kotlinOptions {
+        jvmTarget = JavaVersion.VERSION_1_8.toString()
+    }
+    publishing {
+        singleVariant('release') {
+            withSourcesJar()
+        }
+    }
+}
+
+kotlin {
+    explicitApi()
+}
+
+dependencies {
+    api project(':assLib')
+    // An app using this module already has Compose; these are the versions it's built against
+    implementation 'androidx.compose.runtime:runtime:1.7.6'
+    implementation 'androidx.lifecycle:lifecycle-runtime-compose:2.8.7'
+}
+
+afterEvaluate {
+    publishing {
+        publications {
+            release(MavenPublication) {
+                from components.release
+                artifactId = 'assCompose'
+                pom {
+                    name = 'Anonymous Simple Stats for Jetpack Compose'
+                    description = 'Compose helpers for the Anonymous Simple Stats screen-view tracker'
+                    url = 'https://github.com/ClewigFr/AssAndroid'
+                    licenses {
+                        license {
+                            name = 'MIT License'
+                            url = 'https://opensource.org/licenses/MIT'
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

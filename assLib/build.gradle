@@ -3,8 +3,9 @@ apply plugin: 'kotlin-android'
 apply plugin: 'maven-publish'
 
 // JitPack builds the git tag and passes it as -Pversion; local builds use this one.
-// Coordinates on JitPack: com.github.ClewigFr:AssAndroid:<tag>
-group = 'com.github.ClewigFr'
+// The repository has two modules, so each has its own coordinates on JitPack:
+// com.github.ClewigFr.AssAndroid:assLib:<tag> (the short com.github.ClewigFr:AssAndroid:<tag> would bring both)
+group = 'com.github.ClewigFr.AssAndroid'
 version = project.findProperty('version') != 'unspecified' ? project.findProperty('version') : '0.4.0'
 
 android {

@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- `assCompose`, an optional module for Jetpack Compose: `TrackScreen(stats, pageId)` logs a view
+  when the screen is shown and each time the app comes back to the foreground with it, like
+  `logScreen` in `onResume`. minSdk 21; it depends on Compose runtime and lifecycle, `assLib`
+  still has no dependency.
+
+### Changed
+- The repository publishes two modules, so each has its own coordinates:
+  `com.github.ClewigFr.AssAndroid:assLib:<version>` and `com.github.ClewigFr.AssAndroid:assCompose:<version>`.
+  The short `com.github.ClewigFr:AssAndroid:<version>` would bring both modules, Compose included.
+
 ## 0.4.0
 
 Breaking changes: initialize with `getInstance(context, AssConfig(endpoint, appId, verbose))`,

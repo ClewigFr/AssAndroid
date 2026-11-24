@@ -1,3 +1,4 @@
 include ':assLib'
+include ':assCompose'
 include ':app'
 rootProject.name = "Ass"
