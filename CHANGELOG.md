@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+### Removed
+- `getInstance(context, verbose)`, deprecated since 0.3.0. It sent views without an application
+  UUID, which the backend now refuses (unless it runs with `LEGACY_VIEWS=true`): views were lost.
+  Use `getInstance(context, AssConfig(endpoint, appId, verbose))`.
+
+### Changed
+- `AssConfig.appId` is required (`String`, no longer `String?`): views without an application
+  UUID are refused by the backend. A malformed one still disables the library with an error log.
+
 ## 0.3.1
 
 ### Fixed

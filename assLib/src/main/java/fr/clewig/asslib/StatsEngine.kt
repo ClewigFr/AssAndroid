@@ -15,7 +15,7 @@ import java.util.concurrent.Executor
  * offline device or an overloaded server isn't hit again every 20 views.
  */
 internal class StatsEngine(
-    private val appId: UUID?,
+    private val appId: UUID,
     private val uploader: Uploader,
     private val store: RetryStore,
     private val serial: Executor,

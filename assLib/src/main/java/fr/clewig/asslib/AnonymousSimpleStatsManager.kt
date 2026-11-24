@@ -11,13 +11,13 @@ import java.util.concurrent.Executors
  * Configuration of the stats manager.
  *
  * @param endpoint base URL of the AssBackend server, e.g. "https://stats.example.com"
- * @param appId UUID of your application, shown in the dashboard when you create it.
- *   Page views are only accepted for pages of this application.
+ * @param appId UUID of your application, shown in the dashboard when you create it. Required:
+ *   page views are only accepted for pages of this application. A malformed one disables the library.
  * @param verbose log every event (debug builds only)
  */
 public data class AssConfig(
     public val endpoint: String,
-    public val appId: String?,
+    public val appId: String,
     public val verbose: Boolean = false
 )
 
@@ -34,8 +34,6 @@ public class AnonymousSimpleStatsManager(context: Context, private val config: A
 
     public companion object AnonymousSimpleStats {
 
-        /** Default server for the deprecated getInstance(context, verbose), kept so existing integrations keep compiling. */
-        private const val LEGACY_ENDPOINT = "https://ass-api.clewig.fr"
         private const val RETRY_FILE_NAME = "saved_file.json"
 
         @Volatile
@@ -54,18 +52,11 @@ public class AnonymousSimpleStatsManager(context: Context, private val config: A
             }
             return existing
         }
-
-        @Deprecated(
-            "Pass the backend URL explicitly",
-            ReplaceWith("getInstance(context, AssConfig(endpoint = \"https://…\", appId = \"…\", verbose = verbose))")
-        )
-        public fun getInstance(context: Context, verbose: Boolean): AnonymousSimpleStatsManager =
-            getInstance(context, AssConfig(LEGACY_ENDPOINT, appId = null, verbose = verbose))
     }
 
     private fun createEngine(context: Context): StatsEngine? {
         val appId = parseAppId(config.appId)
-        if (config.appId != null && appId == null) {
+        if (appId == null) {
             log.e("Invalid appId \"${config.appId}\": it must be the application UUID from the dashboard. Stats are disabled.")
             return null
         }

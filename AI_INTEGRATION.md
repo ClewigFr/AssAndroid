@@ -169,7 +169,7 @@ fun Context.ass() = AnonymousSimpleStatsManager.getInstance(
 )
 ```
 
-Put this helper next to `AssPages` so screens can call `ass().logScreen(…)`. Don't use the deprecated `getInstance(context, verbose)`: it points at an old server.
+Put this helper next to `AssPages` so screens can call `ass().logScreen(…)`.
 
 If the app uses build types or flavors with different backends, put the endpoint in `buildConfigField` instead of a literal.
 

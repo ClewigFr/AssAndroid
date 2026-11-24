@@ -69,7 +69,7 @@ The dashboard can import page names from a CSV (**Importer un CSV**) and export 
 
 Ask: *"Read AI_INTEGRATION.md from the Anonymous Simple Stats library and follow phase 1"*, then, with the export, *"follow phase 2"*.
 
-`logScreen` ignores (and logs) ids that aren't valid UUIDs instead of throwing. A malformed `appId` logs an error and disables the library, rather than sending views the server would reject. The old `getInstance(context, verbose)` still compiles but is deprecated: it sends to `https://ass-api.clewig.fr` without an application UUID, so views are only accepted for pages that already exist there.
+`logScreen` ignores (and logs) ids that aren't valid UUIDs instead of throwing. A malformed `appId` logs an error and disables the library, rather than sending views the server would reject.
 
 The library declares only the `INTERNET` permission in its manifest, and has no dependency besides the Kotlin standard library.
 
