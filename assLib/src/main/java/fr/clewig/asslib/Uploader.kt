@@ -88,6 +88,9 @@ internal class HttpUploader(private val url: URL, private val log: AssLog) : Upl
                 readTimeout = TIMEOUT_MS
                 requestMethod = "POST"
                 doOutput = true
+                useCaches = false
+                // Not the platform default, which names the device model and Android version
+                setRequestProperty("User-Agent", "AnonymousSimpleStats")
                 setRequestProperty("Content-Type", "application/json; charset=UTF-8")
                 if (compress) setRequestProperty("Content-Encoding", "gzip")
             }

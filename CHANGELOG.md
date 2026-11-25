@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Privacy
+- Requests send a neutral `User-Agent: AnonymousSimpleStats` instead of the platform default, which
+  named the device model and Android version, and don't use the HTTP cache (as on iOS).
+- New [confidentiality-policy.md](confidentiality-policy.md): what is sent, kept on the device and on
+  the server, and what to declare in Google Play's Data safety form.
+
 ### Tests
 - `TrackScreen` is covered by JVM tests (Robolectric): logged once when shown, again at each return
   to the foreground, never on recomposition, not before the screen is resumed, again when the page
