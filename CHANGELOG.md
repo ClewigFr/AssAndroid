@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.5.1
 
 ### Privacy
 - Requests send a neutral `User-Agent: AnonymousSimpleStats` instead of the platform default, which

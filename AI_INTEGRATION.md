@@ -100,7 +100,7 @@ Match each line to its screen by name. If phase 1's `ass-pages.csv` is still the
 Use one of these, in order of preference:
 
 - **Option A: it's already in the project** as a module or an AAR. Then use that.
-- **Option J: from JitPack.** Add `maven { url 'https://jitpack.io' }` to the repositories (in `settings.gradle`'s `dependencyResolutionManagement`, or the root `build.gradle`), then `implementation 'com.github.ClewigFr.AssAndroid:assLib:0.5.0'`, or `com.github.ClewigFr.AssAndroid:assCompose:0.5.0` for a Jetpack Compose app (it includes `assLib`, see step 4). Use the latest tag from https://github.com/ClewigFr/AssAndroid/tags. Never the short `com.github.ClewigFr:AssAndroid`: since 0.5.0 it brings both modules.
+- **Option J: from JitPack.** Add `maven { url 'https://jitpack.io' }` to the repositories (in `settings.gradle`'s `dependencyResolutionManagement`, or the root `build.gradle`), then `implementation 'com.github.ClewigFr.AssAndroid:assLib:0.5.1'`, or `com.github.ClewigFr.AssAndroid:assCompose:0.5.1` for a Jetpack Compose app (it includes `assLib`, see step 4). Use the latest tag from https://github.com/ClewigFr/AssAndroid/tags. Never the short `com.github.ClewigFr:AssAndroid`: since 0.5.0 it brings both modules.
 - **Option B: as a module.** Copy the `assLib` folder into the project, then:
   ```groovy
   // settings.gradle
