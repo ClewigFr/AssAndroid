@@ -99,8 +99,8 @@ The library declares only the `INTERNET` permission in its manifest, and has no 
 ## How it works
 
 - Page views are kept in memory and sent in a batch when:
-  - 20 views are queued, or
-  - the oldest queued view is more than 2 minutes old, or
+  - 50 views are queued, or
+  - the oldest queued view is more than 10 minutes old, or
   - the app goes to the background (its last activity stops). That batch is written to disk before it is sent.
 - Batches are sent by `POST` to `/views` as `{"app": "<uuid>", "pageViews": [...]}`, one at a time on a single background thread.
 - If sending fails, the batch is written to the cache directory (at most 1000 views, 7 days) and sent again after the next successful upload or on the next launch.

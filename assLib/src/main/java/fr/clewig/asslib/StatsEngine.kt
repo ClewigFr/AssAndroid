@@ -12,7 +12,7 @@ import java.util.concurrent.Executor
  *
  * After a failed upload nothing is sent before a backoff (the server's Retry-After, else
  * 1 min doubling up to 30 min): batches go straight to the retry file meanwhile, so an
- * offline device or an overloaded server isn't hit again every 20 views.
+ * offline device or an overloaded server isn't hit again every 50 views.
  */
 internal class StatsEngine(
     private val appId: UUID,
@@ -99,8 +99,10 @@ internal class StatsEngine(
     private fun drain(): List<PageView> = batch.toList().also { batch.clear() }
 
     companion object {
-        const val BATCH_THRESHOLD = 20
-        const val MAX_BATCH_AGE_MS = 120_000L
+        // Fewer, larger uploads: each one wakes the radio, which costs more battery than the bytes.
+        // The batch is sent anyway when the app goes to background.
+        const val BATCH_THRESHOLD = 50
+        const val MAX_BATCH_AGE_MS = 10 * 60_000L
         const val MIN_BACKOFF_MS = 60_000L
         const val MAX_BACKOFF_MS = 30 * 60_000L
         private const val MAX_DOUBLINGS = 5

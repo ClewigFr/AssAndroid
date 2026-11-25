@@ -243,7 +243,7 @@ Don't call `logScreen` in loops, on recomposition, on scroll, or for events that
 1. Build and run a debug build: `verbose` is on.
 2. Open a few screens, then filter Logcat on the tag `AnonymousSimpleStats`:
    - `log screen <uuid>` should appear once for each screen opened;
-   - after more than 20 views, or when the app goes to the background, the batch is sent and `OK` appears.
+   - after 50 views, or when the app goes to the background, the batch is sent and `OK` appears.
 3. Warnings mean something is wrong:
    - `Ignored page view: "…" is not a UUID`: a constant was mistyped.
    - `Invalid appId …`: `APP_ID` is wrong, and the library disables itself.

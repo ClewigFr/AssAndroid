@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+- Fewer uploads, to save battery (each one wakes the radio): a batch is sent at 50 views (was 20) or
+  when its oldest view is 10 minutes old (was 2), and still whenever the app goes to the background.
+
 ## 0.5.1
 
 ### Privacy
