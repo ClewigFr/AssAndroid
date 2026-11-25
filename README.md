@@ -68,7 +68,7 @@ fun CartScreen() {
 val ass = AnonymousSimpleStatsManager.getInstance(
     applicationContext,
     AssConfig(
-        endpoint = "https://your-ass-backend.example.com",
+        endpoint = "https://ass-api.clewig.fr", // the hosted service, or your own AssBackend
         appId = "c4740a37-572d-488f-9fc4-40cf1575739b", // from the dashboard: "Mes applications"
         verbose = BuildConfig.DEBUG
     )
@@ -79,6 +79,8 @@ ass.logScreen("ed1129dd-c159-4bf8-9851-3016b9d6ee3a")
 ```
 
 Setup: in the dashboard, create an application (you get its UUID), then add one page per screen you want to track (each gets a UUID).
+
+With the hosted service, the API is at `https://ass-api.clewig.fr` and the dashboard at https://ass.clewig.fr, where you create your applications and pages. To keep the data on your own server, deploy [AssBackend](https://github.com/ClewigFr/AssBackend) and [AssFrontEnd](https://github.com/ClewigFr/AssFrontEnd) and use your backend's URL as `endpoint`.
 
 ### Many screens at once, or with an AI assistant
 
@@ -127,8 +129,8 @@ A self-hosted backend sets its own values (`MAX_APPS`, `MAX_PAGES_PER_APP`, `MAX
 
 ## Related repositories
 
-- **AssBackend**: the API that receives the page views
-- **AssFrontEnd**: the dashboard for viewing the stats
+- [**AssBackend**](https://github.com/ClewigFr/AssBackend): the API that receives the page views
+- [**AssFrontEnd**](https://github.com/ClewigFr/AssFrontEnd): the dashboard for viewing the stats
 
 ## Build
 
