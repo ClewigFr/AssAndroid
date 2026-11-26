@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Added
+- Configurable batches: `AssConfig(batchSize = 20..200, batchMaxAgeMinutes = 2..60)`, by default 50
+  views and 10 minutes. A value out of range is replaced by the nearest bound, with a warning. The
+  batch is still sent whenever the app goes to the background.
+
 ### Changed
 - Fewer uploads, to save battery (each one wakes the radio): a batch is sent at 50 views (was 20) or
   when its oldest view is 10 minutes old (was 2), and still whenever the app goes to the background.

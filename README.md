@@ -92,6 +92,21 @@ The dashboard can import page names from a CSV (**Importer un CSV**) and export 
 
 Ask: *"Read AI_INTEGRATION.md from the Anonymous Simple Stats library and follow phase 1"*, then, with the export, *"follow phase 2"*.
 
+### Batch settings
+
+Views are sent by batches to save battery. Two optional `AssConfig` settings change when:
+
+```kotlin
+AssConfig(
+    endpoint = "https://ass-api.clewig.fr",
+    appId = "c4740a37-572d-488f-9fc4-40cf1575739b",
+    batchSize = 100,         // views per batch, 20 to 200 (default 50)
+    batchMaxAgeMinutes = 30  // send older batches at the next view, 2 to 60 (default 10)
+)
+```
+
+Larger and older batches mean fewer uploads, so less battery, but views reach the dashboard later. Whatever these settings, the batch is sent when the app goes to the background. A value out of range is replaced by the nearest bound, with a warning in the logs.
+
 `logScreen` ignores (and logs) ids that aren't valid UUIDs instead of throwing. A malformed `appId` logs an error and disables the library, rather than sending views the server would reject.
 
 The library declares only the `INTERNET` permission in its manifest, and has no dependency besides the Kotlin standard library.
@@ -99,8 +114,8 @@ The library declares only the `INTERNET` permission in its manifest, and has no 
 ## How it works
 
 - Page views are kept in memory and sent in a batch when:
-  - 50 views are queued, or
-  - the oldest queued view is more than 10 minutes old, or
+  - 50 views are queued (`batchSize`, 20 to 200), or
+  - a view arrives and the oldest queued view is more than 10 minutes old (`batchMaxAgeMinutes`, 2 to 60), or
   - the app goes to the background (its last activity stops). That batch is written to disk before it is sent.
 - Batches are sent by `POST` to `/views` as `{"app": "<uuid>", "pageViews": [...]}`, one at a time on a single background thread.
 - If sending fails, the batch is written to the cache directory (at most 1000 views, 7 days) and sent again after the next successful upload or on the next launch.

@@ -22,7 +22,7 @@ class StatsEngineTest {
     private var retryAfterMs: Long? = null
 
     /** Runs each task right away: the test sees its effects synchronously. */
-    private fun engine() = StatsEngine(
+    private fun engine(rules: BatchRules = BatchRules()) = StatsEngine(
         appId = app,
         uploader = { payload ->
             attempts++
@@ -32,7 +32,8 @@ class StatsEngineTest {
         store = store,
         serial = { it.run() },
         clock = clock,
-        log = log
+        log = log,
+        rules = rules
     )
 
     private fun JSONObject.count() = getJSONArray("pageViews").length()
@@ -40,11 +41,11 @@ class StatsEngineTest {
     @Test
     fun sendsOnceTheThresholdIsReached() {
         val engine = engine()
-        repeat(StatsEngine.BATCH_THRESHOLD - 1) { engine.log(UUID.randomUUID()) }
+        repeat(BatchRules.DEFAULT_SIZE - 1) { engine.log(UUID.randomUUID()) }
         assertTrue(sent.isEmpty())
         engine.log(UUID.randomUUID())
         assertEquals(1, sent.size)
-        assertEquals(StatsEngine.BATCH_THRESHOLD, sent[0].count())
+        assertEquals(BatchRules.DEFAULT_SIZE, sent[0].count())
         assertEquals(app.toString(), sent[0].getString("app"))
     }
 
@@ -52,7 +53,7 @@ class StatsEngineTest {
     fun sendsWhenTheOldestViewIsOldEnough() {
         val engine = engine()
         engine.log(UUID.randomUUID())
-        clock.now += StatsEngine.MAX_BATCH_AGE_MS + 1
+        clock.now += BatchRules().maxAgeMs + 1
         engine.log(UUID.randomUUID())
         assertEquals(1, sent.size)
         assertEquals(2, sent[0].count())
@@ -62,13 +63,13 @@ class StatsEngineTest {
     fun failedBatchIsSavedThenResentWhenTheServerIsBack() {
         val engine = engine()
         serverUp = false
-        repeat(StatsEngine.BATCH_THRESHOLD) { engine.log(UUID.randomUUID()) }
-        assertEquals(StatsEngine.BATCH_THRESHOLD, store.read().size)
+        repeat(BatchRules.DEFAULT_SIZE) { engine.log(UUID.randomUUID()) }
+        assertEquals(BatchRules.DEFAULT_SIZE, store.read().size)
 
         serverUp = true
         clock.now += StatsEngine.MIN_BACKOFF_MS
-        repeat(StatsEngine.BATCH_THRESHOLD) { engine.log(UUID.randomUUID()) }
-        assertEquals(listOf(StatsEngine.BATCH_THRESHOLD, StatsEngine.BATCH_THRESHOLD), sent.map { it.count() })
+        repeat(BatchRules.DEFAULT_SIZE) { engine.log(UUID.randomUUID()) }
+        assertEquals(listOf(BatchRules.DEFAULT_SIZE, BatchRules.DEFAULT_SIZE), sent.map { it.count() })
         assertTrue(store.read().isEmpty())
     }
 
@@ -120,10 +121,10 @@ class StatsEngineTest {
     fun eachViewIsSentOnlyOnce() {
         val engine = engine()
         engine.start()
-        repeat(StatsEngine.BATCH_THRESHOLD * 2 + 3) { engine.log(UUID.randomUUID()) }
+        repeat(BatchRules.DEFAULT_SIZE * 2 + 3) { engine.log(UUID.randomUUID()) }
         engine.flush()
         val pages = sent.flatMap { p -> (0 until p.count()).map { p.getJSONArray("pageViews").getJSONObject(it).getString("page") } }
-        assertEquals(StatsEngine.BATCH_THRESHOLD * 2 + 3, pages.toSet().size)
+        assertEquals(BatchRules.DEFAULT_SIZE * 2 + 3, pages.toSet().size)
         assertEquals(pages.size, pages.toSet().size)
     }
 
@@ -131,15 +132,15 @@ class StatsEngineTest {
     fun backsOffAfterAFailureThenDoublesTheWait() {
         val engine = engine()
         serverUp = false
-        repeat(StatsEngine.BATCH_THRESHOLD * 3) { engine.log(UUID.randomUUID()) }
+        repeat(BatchRules.DEFAULT_SIZE * 3) { engine.log(UUID.randomUUID()) }
         assertEquals(1, attempts) // the next two batches went straight to the file
-        assertEquals(StatsEngine.BATCH_THRESHOLD * 3, store.read().size)
+        assertEquals(BatchRules.DEFAULT_SIZE * 3, store.read().size)
 
         clock.now += StatsEngine.MIN_BACKOFF_MS
-        repeat(StatsEngine.BATCH_THRESHOLD) { engine.log(UUID.randomUUID()) }
+        repeat(BatchRules.DEFAULT_SIZE) { engine.log(UUID.randomUUID()) }
         assertEquals(2, attempts)
         clock.now += StatsEngine.MIN_BACKOFF_MS // the wait is now 2 min
-        repeat(StatsEngine.BATCH_THRESHOLD) { engine.log(UUID.randomUUID()) }
+        repeat(BatchRules.DEFAULT_SIZE) { engine.log(UUID.randomUUID()) }
         assertEquals(2, attempts)
     }
 
@@ -148,12 +149,12 @@ class StatsEngineTest {
         val engine = engine()
         serverUp = false
         retryAfterMs = 5_000
-        repeat(StatsEngine.BATCH_THRESHOLD) { engine.log(UUID.randomUUID()) }
+        repeat(BatchRules.DEFAULT_SIZE) { engine.log(UUID.randomUUID()) }
         serverUp = true
         clock.now += 5_000
-        repeat(StatsEngine.BATCH_THRESHOLD) { engine.log(UUID.randomUUID()) }
+        repeat(BatchRules.DEFAULT_SIZE) { engine.log(UUID.randomUUID()) }
         assertEquals(3, attempts) // failed batch, new batch, then the saved one
-        assertEquals(listOf(StatsEngine.BATCH_THRESHOLD, StatsEngine.BATCH_THRESHOLD), sent.map { it.count() })
+        assertEquals(listOf(BatchRules.DEFAULT_SIZE, BatchRules.DEFAULT_SIZE), sent.map { it.count() })
         assertTrue(store.read().isEmpty())
     }
 
@@ -161,10 +162,24 @@ class StatsEngineTest {
     fun flushDuringBackoffOnlySaves() {
         val engine = engine()
         serverUp = false
-        repeat(StatsEngine.BATCH_THRESHOLD) { engine.log(UUID.randomUUID()) }
+        repeat(BatchRules.DEFAULT_SIZE) { engine.log(UUID.randomUUID()) }
         engine.log(UUID.randomUUID())
         engine.flush()
         assertEquals(1, attempts)
-        assertEquals(StatsEngine.BATCH_THRESHOLD + 1, store.read().size)
+        assertEquals(BatchRules.DEFAULT_SIZE + 1, store.read().size)
+    }
+
+    @Test
+    fun customRulesSetTheBatchSizeAndAge() {
+        val engine = engine(BatchRules(size = 20, maxAgeMs = 2 * BatchRules.MINUTE_MS))
+        repeat(19) { engine.log(UUID.randomUUID()) }
+        assertEquals(0, sent.size)
+        engine.log(UUID.randomUUID())
+        assertEquals(listOf(20), sent.map { it.count() })
+
+        engine.log(UUID.randomUUID())
+        clock.now += 2 * BatchRules.MINUTE_MS + 1
+        engine.log(UUID.randomUUID())
+        assertEquals(listOf(20, 2), sent.map { it.count() })
     }
 }

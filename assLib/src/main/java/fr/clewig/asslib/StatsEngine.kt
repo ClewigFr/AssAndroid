@@ -12,7 +12,7 @@ import java.util.concurrent.Executor
  *
  * After a failed upload nothing is sent before a backoff (the server's Retry-After, else
  * 1 min doubling up to 30 min): batches go straight to the retry file meanwhile, so an
- * offline device or an overloaded server isn't hit again every 50 views.
+ * offline device or an overloaded server isn't hit again on every batch.
  */
 internal class StatsEngine(
     private val appId: UUID,
@@ -21,6 +21,7 @@ internal class StatsEngine(
     private val serial: Executor,
     private val clock: () -> Long,
     private val log: AssLog,
+    private val rules: BatchRules = BatchRules(),
     private val sessionId: UUID = UUID.randomUUID()
 ) {
     private val lock = Any()
@@ -37,8 +38,8 @@ internal class StatsEngine(
         val now = clock()
         val toSend = synchronized(lock) {
             batch += PageView(page, sessionId, now)
-            val oldEnough = batch.first().timestamp + MAX_BATCH_AGE_MS < now
-            if (batch.size >= BATCH_THRESHOLD || oldEnough) drain() else null
+            val oldEnough = batch.first().timestamp + rules.maxAgeMs < now
+            if (batch.size >= rules.size || oldEnough) drain() else null
         }
         toSend?.let { send(it) }
         log.v("log screen $page")
@@ -99,10 +100,6 @@ internal class StatsEngine(
     private fun drain(): List<PageView> = batch.toList().also { batch.clear() }
 
     companion object {
-        // Fewer, larger uploads: each one wakes the radio, which costs more battery than the bytes.
-        // The batch is sent anyway when the app goes to background.
-        const val BATCH_THRESHOLD = 50
-        const val MAX_BATCH_AGE_MS = 10 * 60_000L
         const val MIN_BACKOFF_MS = 60_000L
         const val MAX_BACKOFF_MS = 30 * 60_000L
         private const val MAX_DOUBLINGS = 5

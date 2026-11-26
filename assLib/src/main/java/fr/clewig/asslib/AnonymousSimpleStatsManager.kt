@@ -14,11 +14,17 @@ import java.util.concurrent.Executors
  * @param appId UUID of your application, shown in the dashboard when you create it. Required:
  *   page views are only accepted for pages of this application. A malformed one disables the library.
  * @param verbose log every event (debug builds only)
+ * @param batchSize views kept in memory before they are sent together, 20 to 200 (default 50)
+ * @param batchMaxAgeMinutes the batch is also sent when a view arrives and its oldest view is
+ *   older than this, 2 to 60 minutes (default 10). Whatever these settings, the batch is sent
+ *   when the app goes to background. A value out of range is replaced by the nearest bound.
  */
 public data class AssConfig(
     public val endpoint: String,
     public val appId: String,
-    public val verbose: Boolean = false
+    public val verbose: Boolean = false,
+    public val batchSize: Int = 50,
+    public val batchMaxAgeMinutes: Int = 10
 )
 
 /**
@@ -75,7 +81,8 @@ public class AnonymousSimpleStatsManager(context: Context, private val config: A
             store = RetryStore(File(context.cacheDir, RETRY_FILE_NAME), clock, log),
             serial = serialExecutor(),
             clock = clock,
-            log = log
+            log = log,
+            rules = batchRules(config.batchSize, config.batchMaxAgeMinutes, log)
         ).also { engine ->
             engine.start()
             val app = context as? Application
