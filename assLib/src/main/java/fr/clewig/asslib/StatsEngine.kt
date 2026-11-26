@@ -45,25 +45,22 @@ internal class StatsEngine(
         log.v("log screen $page")
     }
 
-    /**
-     * The app goes to background and the process may be killed: the batch is saved first,
-     * sent, then taken out of the file once delivered.
-     */
+    /** The app goes to background and the process may be killed: the batch is sent now. */
     fun flush() {
         val toSend = synchronized(lock) { drain() }
-        if (toSend.isEmpty()) return
-        serial.execute {
-            store.add(toSend)
-            if (upload(toSend)) {
-                store.remove(toSend)
-                retrySaved() // the server is reachable again
-            }
-        }
+        if (toSend.isNotEmpty()) send(toSend)
     }
 
+    /**
+     * Every batch is saved first, sent, then taken out of the file once delivered: a process
+     * killed mid-upload loses nothing (the batch goes with the next retry instead).
+     */
     private fun send(views: List<PageView>) = serial.execute {
-        if (upload(views)) retrySaved() // the server is reachable again
-        else store.add(views)
+        store.add(views)
+        if (upload(views)) {
+            store.remove(views)
+            retrySaved() // the server is reachable again
+        }
     }
 
     private fun retrySaved() {

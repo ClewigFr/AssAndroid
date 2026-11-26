@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+- A full batch sent while the app was in the foreground was only written to disk if the upload
+  failed: a process killed mid-upload lost it. Every batch is now saved before it is sent and removed
+  once accepted, as batches sent on going to background already were.
+
 ## 0.6.0
 
 Source compatible: existing `AssConfig(endpoint, appId, verbose)` calls compile unchanged. `AssConfig`

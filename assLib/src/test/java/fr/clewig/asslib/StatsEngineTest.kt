@@ -182,4 +182,21 @@ class StatsEngineTest {
         engine.log(UUID.randomUUID())
         assertEquals(listOf(20, 2), sent.map { it.count() })
     }
+
+    @Test
+    fun aFullBatchIsOnDiskWhileItUploads() {
+        // What a process killed mid-upload would leave: the batch must already be in the file
+        val onDiskDuringUpload = mutableListOf<Int>()
+        val engine = StatsEngine(
+            appId = app,
+            uploader = { payload -> onDiskDuringUpload += store.read().size; sent += payload; UploadResult.Done },
+            store = store,
+            serial = { it.run() },
+            clock = clock,
+            log = log
+        )
+        repeat(BatchRules.DEFAULT_SIZE) { engine.log(UUID.randomUUID()) }
+        assertEquals(listOf(BatchRules.DEFAULT_SIZE), onDiskDuringUpload)
+        assertTrue(store.read().isEmpty()) // taken out once delivered
+    }
 }
