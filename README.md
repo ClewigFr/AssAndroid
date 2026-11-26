@@ -39,7 +39,7 @@ dependencyResolutionManagement {
 
 // app/build.gradle
 dependencies {
-    implementation 'com.github.ClewigFr.AssAndroid:assLib:0.6.0'
+    implementation 'com.github.ClewigFr.AssAndroid:assLib:0.6.1'
 }
 ```
 
@@ -50,7 +50,7 @@ Since 0.5.0 the repository publishes two modules, each with its own coordinates.
 An optional module logs a screen from Compose. It needs minSdk 21, and brings Compose runtime and lifecycle, which a Compose app already has; `assLib` stays dependency-free.
 
 ```groovy
-implementation 'com.github.ClewigFr.AssAndroid:assCompose:0.6.0' // includes assLib
+implementation 'com.github.ClewigFr.AssAndroid:assCompose:0.6.1' // includes assLib
 ```
 
 ```kotlin

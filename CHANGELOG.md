@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.6.1
 
 ### Fixed
 - A full batch sent while the app was in the foreground was only written to disk if the upload
