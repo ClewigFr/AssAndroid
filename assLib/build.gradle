@@ -6,7 +6,7 @@ apply plugin: 'maven-publish'
 // The repository has two modules, so each has its own coordinates on JitPack:
 // com.github.ClewigFr.AssAndroid:assLib:<tag> (the short com.github.ClewigFr:AssAndroid:<tag> would bring both)
 group = 'com.github.ClewigFr.AssAndroid'
-version = project.findProperty('version') != 'unspecified' ? project.findProperty('version') : '0.5.1'
+version = project.findProperty('version') != 'unspecified' ? project.findProperty('version') : '0.6.0'
 
 android {
     namespace "fr.clewig.asslib"

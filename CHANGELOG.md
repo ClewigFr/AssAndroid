@@ -1,6 +1,9 @@
 # Changelog
 
-## Unreleased
+## 0.6.0
+
+Source compatible: existing `AssConfig(endpoint, appId, verbose)` calls compile unchanged. `AssConfig`
+gained two parameters, so apps must be recompiled against 0.6.0 (not just swap the jar).
 
 ### Added
 - Configurable batches: `AssConfig(batchSize = 20..200, batchMaxAgeMinutes = 2..60)`, by default 50
