@@ -34,11 +34,14 @@ class PageViewTest {
     }
 
     @Test
-    fun parsesAppId() {
+    fun parsesOnlyCanonicalUuids() {
         val id = UUID.randomUUID()
-        assertEquals(id, parseAppId(" $id "))
-        assertNull(parseAppId("not-a-uuid"))
-        assertNull(parseAppId(""))
+        assertEquals(id, parseUuid(" $id "))
+        assertEquals(id, parseUuid(id.toString().uppercase()))
+        assertNull(parseUuid("not-a-uuid"))
+        assertNull(parseUuid(""))
+        assertNull(parseUuid("1-2-3-4-5"))
+        assertNull(parseUuid("$id-0"))
     }
 
     @Test

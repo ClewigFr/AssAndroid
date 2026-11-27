@@ -3,7 +3,6 @@ package fr.clewig.asslib
 import android.app.Application
 import android.content.Context
 import java.io.File
-import java.util.UUID
 import java.util.concurrent.Executor
 import java.util.concurrent.Executors
 
@@ -36,7 +35,12 @@ public class AnonymousSimpleStatsManager(context: Context, private val config: A
     private val log: AssLog = AndroidLog(config.verbose)
 
     /** Null when the configuration is invalid: the library is then disabled. */
-    private val engine: StatsEngine? = createEngine(context.applicationContext ?: context)
+    private val engine: StatsEngine? = try {
+        createEngine(context.applicationContext ?: context)
+    } catch (e: Throwable) {
+        log.e("Setup failed, stats are disabled", e)
+        null
+    }
 
     public companion object AnonymousSimpleStats {
 
@@ -61,7 +65,7 @@ public class AnonymousSimpleStatsManager(context: Context, private val config: A
     }
 
     private fun createEngine(context: Context): StatsEngine? {
-        val appId = parseAppId(config.appId)
+        val appId = parseUuid(config.appId)
         if (appId == null) {
             log.e("Invalid appId \"${config.appId}\": it must be the application UUID from the dashboard. Stats are disabled.")
             return null
@@ -115,12 +119,15 @@ public class AnonymousSimpleStatsManager(context: Context, private val config: A
      */
     public fun logScreen(pageId: String) {
         val engine = engine ?: return
-        val page = try {
-            UUID.fromString(pageId)
-        } catch (e: IllegalArgumentException) {
+        val page = parseUuid(pageId)
+        if (page == null) {
             log.w("Ignored page view: \"$pageId\" is not a UUID")
             return
         }
-        engine.log(page)
+        try {
+            engine.log(page)
+        } catch (e: Throwable) {
+            log.e("Unexpected error, page view ignored", e)
+        }
     }
 }

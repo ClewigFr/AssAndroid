@@ -46,14 +46,15 @@ internal fun List<PageView>.toJson(now: Long = System.currentTimeMillis()) =
 internal fun List<PageView>.toJsonLocal() =
     JSONArray().apply { forEach { put(it.toJsonLocal()) } }
 
+private val CANONICAL_UUID = Regex("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
+
 /**
- * The application UUID from [appId], or null when it's malformed.
+ * The UUID in [value] (surrounding spaces ignored), or null when it isn't in the canonical
+ * 8-4-4-4-12 form. Stricter than [UUID.fromString], which accepts "1-2-3-4-5" on some Android
+ * versions: the server would reject such an id and, with it, the whole batch.
  */
-internal fun parseAppId(appId: String): UUID? = try {
-    UUID.fromString(appId.trim())
-} catch (e: IllegalArgumentException) {
-    null
-}
+internal fun parseUuid(value: String): UUID? =
+    value.trim().takeIf { CANONICAL_UUID.matches(it) }?.let(UUID::fromString)
 
 /** Body of POST /views: {"app": "<uuid>", "pageViews": [...]}. */
 internal fun viewsPayload(app: UUID, pageViews: JSONArray) = JSONObject().apply {

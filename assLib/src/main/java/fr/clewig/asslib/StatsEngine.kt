@@ -75,7 +75,7 @@ internal class StatsEngine(
         val now = clock()
         if (now < nextAttemptAt) return false
         val payload = viewsPayload(appId, views.toJson(now))
-        log.v(payload.toString())
+        if (log.verbose) log.v(payload.toString()) // skip serializing the batch when nobody reads it
         return when (val result = uploader.upload(payload)) {
             UploadResult.Done -> {
                 failures = 0
