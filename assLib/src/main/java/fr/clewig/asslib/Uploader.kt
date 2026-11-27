@@ -82,30 +82,10 @@ internal class HttpUploader(private val url: URL, private val log: AssLog) : Upl
         return try {
             val compress = gzip
             log.v("POST ${url.path}${if (compress) " (gzip)" else ""}")
-            connection = (url.openConnection() as HttpURLConnection).apply {
-                if (this is HttpsURLConnection) legacyTlsFactory?.let { sslSocketFactory = it }
-                connectTimeout = TIMEOUT_MS
-                readTimeout = TIMEOUT_MS
-                requestMethod = "POST"
-                doOutput = true
-                useCaches = false
-                // Not the platform default, which names the device model and Android version
-                setRequestProperty("User-Agent", "AnonymousSimpleStats")
-                setRequestProperty("Content-Type", "application/json; charset=UTF-8")
-                if (compress) setRequestProperty("Content-Encoding", "gzip")
-            }
+            connection = open(compress)
             val out = connection.outputStream.let { if (compress) GZIPOutputStream(it) else it }
             out.writer(Charsets.UTF_8).use { it.write(payload.toString()) }
-
-            // Read the code first: inputStream throws for 4xx/5xx responses
-            val code = connection.responseCode
-            gzip = acceptsGzip(connection.getHeaderField("Accept-Encoding"))
-            if (log.verbose) {
-                val body = if (code < 400) connection.inputStream else connection.errorStream
-                body?.bufferedReader(Charsets.UTF_8)?.use { log.v(it.readText()) }
-            }
-            if (isHandled(code, log)) UploadResult.Done
-            else UploadResult.Retry(parseRetryAfter(connection.getHeaderField("Retry-After")))
+            result(connection)
         } catch (e: IOException) {
             // Offline, timeout, DNS…: the batch is kept and retried later
             log.w("Upload failed (${e.javaClass.simpleName}: ${e.message}), page views kept for retry")
@@ -117,6 +97,31 @@ internal class HttpUploader(private val url: URL, private val log: AssLog) : Upl
         } finally {
             connection?.disconnect()
         }
+    }
+
+    private fun open(compress: Boolean) = (url.openConnection() as HttpURLConnection).apply {
+        if (this is HttpsURLConnection) legacyTlsFactory?.let { sslSocketFactory = it }
+        connectTimeout = TIMEOUT_MS
+        readTimeout = TIMEOUT_MS
+        requestMethod = "POST"
+        doOutput = true
+        useCaches = false
+        // Not the platform default, which names the device model and Android version
+        setRequestProperty("User-Agent", "AnonymousSimpleStats")
+        setRequestProperty("Content-Type", "application/json; charset=UTF-8")
+        if (compress) setRequestProperty("Content-Encoding", "gzip")
+    }
+
+    private fun result(connection: HttpURLConnection): UploadResult {
+        // Read the code first: inputStream throws for 4xx/5xx responses
+        val code = connection.responseCode
+        gzip = acceptsGzip(connection.getHeaderField("Accept-Encoding"))
+        if (log.verbose) {
+            val body = if (code < 400) connection.inputStream else connection.errorStream
+            body?.bufferedReader(Charsets.UTF_8)?.use { log.v(it.readText()) }
+        }
+        return if (isHandled(code, log)) UploadResult.Done
+        else UploadResult.Retry(parseRetryAfter(connection.getHeaderField("Retry-After")))
     }
 
     private companion object {

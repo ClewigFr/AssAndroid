@@ -1,0 +1,39 @@
+# Overrides of detekt's defaults (buildUponDefaultConfig), for the reasons given on each.
+# Rules: https://detekt.dev/docs/rules/complexity
+
+complexity:
+  LongParameterList:
+    # StatsEngine takes each collaborator in its constructor so tests can swap them
+    constructorThreshold: 9
+  TooManyFunctions:
+    ignoreOverridden: true
+
+empty-blocks:
+  EmptyFunctionBlock:
+    # Interfaces such as ActivityLifecycleCallbacks force no-op overrides
+    ignoreOverridden: true
+
+exceptions:
+  # The library must never throw into the host app: broad catches that log and carry on are deliberate
+  TooGenericExceptionCaught:
+    active: false
+  SwallowedException:
+    active: false
+
+naming:
+  FunctionNaming:
+    # Composables are PascalCase
+    ignoreAnnotated: ['Composable']
+
+style:
+  MaxLineLength:
+    # Log messages stay on one line so they can be found with grep
+    maxLineLength: 150
+  MagicNumber:
+    # HTTP status codes and unit conversions read better as literals
+    ignoreNumbers: ['-1', '0', '1', '2', '200', '206', '400', '1000']
+    excludes: ['**/test/**', '**/app/**']
+  ReturnCount:
+    # createEngine rejects a bad appId, then a bad endpoint, before building the engine
+    max: 3
+    excludeGuardClauses: true

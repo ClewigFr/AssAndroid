@@ -26,12 +26,13 @@ jobs:
       - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
       # The Android SDK is preinstalled on GitHub's Ubuntu runners
       # publishToMavenLocal is what JitPack runs: a broken publication fails here first
-      - run: ./gradlew :assLib:testDebugUnitTest :assLib:lintDebug :app:assembleDebug :assLib:publishToMavenLocal
+      - run: ./gradlew detekt :assLib:testDebugUnitTest :assLib:lintDebug :app:assembleDebug :assLib:publishToMavenLocal
       - name: Reports
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: reports
           path: |
+            assCompose/build/reports/
             assLib/build/reports/
             app/build/reports/

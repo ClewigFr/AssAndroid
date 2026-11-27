@@ -41,18 +41,18 @@ internal class RetryStore(
     private fun write(views: List<PageView>) {
         try {
             val kept = capRetryBatch(views, clock())
-            if (kept.isEmpty()) file.delete()
-            else {
-                // Write aside then rename: a process killed mid-write leaves the old file intact
-                val tmp = File(file.path + ".tmp")
-                tmp.writeText(JSONObject().put("pageViews", kept.toJsonLocal()).toString(), Charsets.UTF_8)
-                if (!tmp.renameTo(file)) {
-                    file.delete()
-                    if (!tmp.renameTo(file)) log.e("Could not write the retry file")
-                }
-            }
+            if (kept.isEmpty()) file.delete() else replace(JSONObject().put("pageViews", kept.toJsonLocal()).toString())
         } catch (e: Exception) {
             log.e("Could not write the retry file", e)
         }
+    }
+
+    /** Write aside then rename: a process killed mid-write leaves the old file intact. */
+    private fun replace(content: String) {
+        val tmp = File(file.path + ".tmp")
+        tmp.writeText(content, Charsets.UTF_8)
+        if (tmp.renameTo(file)) return
+        file.delete()
+        if (!tmp.renameTo(file)) log.e("Could not write the retry file")
     }
 }

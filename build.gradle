@@ -4,12 +4,15 @@ buildscript {
     repositories {
         google()
         mavenCentral()
+        gradlePluginPortal()
     }
     dependencies {
         classpath "com.android.tools.build:gradle:8.7.3"
         classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
         // Compose compiler, for the optional assCompose module only
         classpath "org.jetbrains.kotlin:compose-compiler-gradle-plugin:$kotlin_version"
+        // Static analysis, build time only (1.23.8 is built against Kotlin 2.0.21)
+        classpath "io.gitlab.arturbosch.detekt:detekt-gradle-plugin:1.23.8"
 
         // NOTE: Do not place your application dependencies here; they belong
         // in the individual module build.gradle files
@@ -20,6 +23,17 @@ allprojects {
     repositories {
         google()
         mavenCentral()
+    }
+}
+
+// ./gradlew detekt checks every module against config/detekt/detekt.yml (on top of detekt's defaults)
+subprojects {
+    apply plugin: 'io.gitlab.arturbosch.detekt'
+    detekt {
+        buildUponDefaultConfig = true
+        config.setFrom(rootProject.file('config/detekt/detekt.yml'))
+        source.setFrom('src/main/java', 'src/test/java')
+        parallel = true
     }
 }
 
